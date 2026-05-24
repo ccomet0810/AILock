@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">AILock</string>
+    <string name="accessibility_service_description">AILock이 제한 앱 실행을 감지하고 사용자의 자기조절을 돕는 레서판다 개입 화면을 표시합니다. 화면 내용이나 입력 내용을 몰래 수집하지 않습니다.</string>
+    <string name="notification_channel_name">AILock 약속 알림</string>
+    <string name="notification_channel_description">제한 시간, AI 허용 시간, 자기조절 상태를 알려줍니다.</string>
+</resources>
