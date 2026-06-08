@@ -5,18 +5,34 @@ import android.app.Application
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -34,16 +50,20 @@ import com.ccomet.ailock.ui.restrictions.RestrictionsScreen
 import com.ccomet.ailock.ui.settings.PermissionManagementScreen
 import com.ccomet.ailock.ui.settings.ProfileEditScreen
 import com.ccomet.ailock.ui.settings.SettingsScreen
+import com.ccomet.ailock.ui.theme.AppBackground
 
 @Composable
 fun AILockApp(
     navController: NavHostController = rememberNavController(),
 ) {
     val application = LocalContext.current.applicationContext as Application
+    val lifecycleOwner = LocalLifecycleOwner.current
     val viewModel: AILockViewModel = viewModel(factory = AILockViewModel.Factory(application))
     val uiState by viewModel.uiState.collectAsState()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
+    var bottomNavHidden by remember { mutableStateOf(false) }
+    var appPickerAfterAdd by remember { mutableStateOf(false) }
 
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -62,148 +82,137 @@ fun AILockApp(
         viewModel.refreshPermissions()
     }
 
-    val mainRoutes = setOf(Routes.Home, Routes.Records, Routes.Restrictions, Routes.Settings)
-    Scaffold(
-        bottomBar = {
-            if (currentRoute in mainRoutes) {
-                FloatingBottomNav(
-                    currentRoute = currentRoute ?: Routes.Home,
-                    onNavigate = { route ->
-                        navController.navigate(route) {
-                            popUpTo(Routes.Home) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                )
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != Routes.RESTRICTIONS) bottomNavHidden = false
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshPermissions()
             }
-        },
-    ) { innerPadding ->
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val mainRoutes = setOf(Routes.HOME, Routes.RECORDS, Routes.RESTRICTIONS, Routes.SETTINGS)
+    Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
-            startDestination = if (uiState.onboardingCompleted) Routes.Home else Routes.Onboarding,
-            modifier = Modifier
-                .padding(innerPadding)
-                .consumeWindowInsets(innerPadding),
-            enterTransition = {
-                val forward = routeIndex(targetState.destination.route) >= routeIndex(initialState.destination.route)
-                slideInHorizontally(animationSpec = tween(240)) { width -> if (forward) width else -width }
-            },
-            exitTransition = {
-                val forward = routeIndex(targetState.destination.route) >= routeIndex(initialState.destination.route)
-                slideOutHorizontally(animationSpec = tween(240)) { width -> if (forward) -width else width }
-            },
-            popEnterTransition = {
-                slideInHorizontally(animationSpec = tween(220)) { width -> -width }
-            },
-            popExitTransition = {
-                slideOutHorizontally(animationSpec = tween(220)) { width -> width }
-            },
+            startDestination = if (uiState.onboardingCompleted) Routes.HOME else Routes.ONBOARDING,
+            modifier = Modifier.fillMaxSize(),
+            enterTransition = { EnterTransition.None },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { ExitTransition.None },
         ) {
-            composable(Routes.Onboarding) {
+            composable(Routes.ONBOARDING) {
                 OnboardingScreen(
                     uiState = uiState,
-                    onNext = viewModel::nextOnboardingStep,
-                    onBack = viewModel::previousOnboardingStep,
+                    onOpenNextPermission = viewModel::openNextMissingPermission,
                     onUsagePermission = viewModel::openUsageAccessSettings,
                     onOverlayPermission = viewModel::openOverlaySettings,
                     onAccessibilityPermission = viewModel::openAccessibilitySettings,
                     onNotificationPermission = openNotification,
+                    onBatteryPermission = viewModel::openBatteryOptimizationSettings,
                     onRefreshPermissions = viewModel::refreshPermissions,
-                    onDebugContinue = viewModel::skipPermissionGateForDebug,
+                    onNext = viewModel::nextOnboardingStep,
+                    onPrevious = viewModel::previousOnboardingStep,
                     onProfileChange = viewModel::updateProfileDraft,
-                    onSaveProfileAndContinue = viewModel::saveProfileAndContinue,
+                    onAppQuery = viewModel::updateAppQuery,
+                    onToggleApp = viewModel::toggleOnboardingApp,
+                    onSaveAppsAndContinue = viewModel::saveOnboardingAppsAndContinue,
                     onFinish = {
-                        viewModel.finishOnboarding()
-                        navController.navigate(Routes.Home) {
-                            popUpTo(Routes.Onboarding) { inclusive = true }
+                        viewModel.saveProfileAndFinish()
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.ONBOARDING) { inclusive = true }
                         }
                     },
                 )
             }
-            composable(Routes.Home) {
+            composable(Routes.HOME) {
                 HomeScreen(uiState)
             }
-            composable(Routes.Records) {
+            composable(Routes.RECORDS) {
                 RecordsScreen(uiState)
             }
-            composable(Routes.Restrictions) {
+            composable(Routes.RESTRICTIONS) {
                 RestrictionsScreen(
                     uiState = uiState,
+                    onDeleteModeChange = { bottomNavHidden = it },
                     onAdd = {
                         viewModel.beginAddRestriction()
-                        navController.navigate(Routes.RestrictionAdd)
+                        appPickerAfterAdd = true
+                        navController.navigate(Routes.APP_PICKER)
                     },
                     onEdit = { id ->
                         viewModel.beginEditRestriction(id)
-                        navController.navigate("${Routes.RestrictionEdit}/$id")
+                        navController.navigate("${Routes.RESTRICTION_EDIT}/$id")
                     },
+                    onDeleteApp = viewModel::deleteLockedApp,
                 )
             }
-            composable(Routes.Settings) {
+            composable(Routes.SETTINGS) {
                 SettingsScreen(
                     uiState = uiState,
                     onProfile = {
                         viewModel.startProfileEditing()
-                        navController.navigate(Routes.Profile)
+                        navController.navigate(Routes.PROFILE)
                     },
-                    onPermissions = { navController.navigate(Routes.Permissions) },
+                    onPermissions = { navController.navigate(Routes.PERMISSIONS) },
                     onRestartOnboarding = {
                         viewModel.restartOnboarding()
-                        navController.navigate(Routes.Onboarding) {
-                            popUpTo(Routes.Home) { inclusive = true }
+                        navController.navigate(Routes.ONBOARDING) {
+                            popUpTo(Routes.HOME) { inclusive = true }
                         }
                     },
-                    onBaseUrlChange = viewModel::updateBackendBaseUrlInput,
-                    onSaveBaseUrl = viewModel::saveBackendBaseUrl,
-                    onMockChange = viewModel::setMockAiMode,
-                    onStartMonitor = viewModel::startUsageMonitor,
                 )
             }
-            composable(Routes.RestrictionAdd) {
+            composable(Routes.RESTRICTION_ADD) {
                 RestrictionEditScreen(
                     uiState = uiState,
                     isEditing = false,
                     onBack = { navController.popBackStack() },
-                    onPickApp = { navController.navigate(Routes.AppPicker) },
-                    onReasonPreset = viewModel::updateReasonPreset,
-                    onReasonCustom = viewModel::updateReasonCustom,
-                    onRestrictionType = viewModel::updateRestrictionType,
-                    onToggleDay = viewModel::toggleDay,
+                    onPickApp = { navController.navigate(Routes.APP_PICKER) },
                     onDailyLimit = viewModel::updateDailyLimit,
-                    onToggleAdvanced = viewModel::toggleAdvancedSchedule,
-                    onAdvancedLimit = viewModel::updateAdvancedLimit,
-                    onSave = { viewModel.saveDraft { navController.popBackStack(Routes.Restrictions, false) } },
+                    onSave = { viewModel.saveDraft { navController.popBackStack(Routes.RESTRICTIONS, false) } },
                     onDelete = {},
                 )
             }
-            composable("${Routes.RestrictionEdit}/{id}") {
+            composable("${Routes.RESTRICTION_EDIT}/{id}") {
                 RestrictionEditScreen(
                     uiState = uiState,
                     isEditing = true,
                     onBack = { navController.popBackStack() },
-                    onPickApp = { navController.navigate(Routes.AppPicker) },
-                    onReasonPreset = viewModel::updateReasonPreset,
-                    onReasonCustom = viewModel::updateReasonCustom,
-                    onRestrictionType = viewModel::updateRestrictionType,
-                    onToggleDay = viewModel::toggleDay,
+                    onPickApp = { navController.navigate(Routes.APP_PICKER) },
                     onDailyLimit = viewModel::updateDailyLimit,
-                    onToggleAdvanced = viewModel::toggleAdvancedSchedule,
-                    onAdvancedLimit = viewModel::updateAdvancedLimit,
-                    onSave = { viewModel.saveDraft { navController.popBackStack(Routes.Restrictions, false) } },
-                    onDelete = { viewModel.deleteDraft { navController.popBackStack(Routes.Restrictions, false) } },
+                    onSave = { viewModel.saveDraft { navController.popBackStack(Routes.RESTRICTIONS, false) } },
+                    onDelete = { viewModel.deleteDraft { navController.popBackStack(Routes.RESTRICTIONS, false) } },
                 )
             }
-            composable(Routes.AppPicker) {
+            composable(Routes.APP_PICKER) {
                 AppPickerScreen(
                     uiState = uiState,
-                    onBack = { navController.popBackStack() },
+                    onBack = {
+                        appPickerAfterAdd = false
+                        navController.popBackStack()
+                    },
                     onQuery = viewModel::updateAppQuery,
                     onSelect = viewModel::selectApp,
-                    onConfirm = { navController.popBackStack() },
+                    onConfirm = {
+                        if (appPickerAfterAdd) {
+                            appPickerAfterAdd = false
+                            navController.navigate(Routes.RESTRICTION_ADD) {
+                                popUpTo(Routes.RESTRICTIONS)
+                            }
+                        } else {
+                            navController.popBackStack()
+                        }
+                    },
                 )
             }
-            composable(Routes.Profile) {
+            composable(Routes.PROFILE) {
                 ProfileEditScreen(
                     uiState = uiState,
                     onBack = { navController.popBackStack() },
@@ -214,7 +223,7 @@ fun AILockApp(
                     },
                 )
             }
-            composable(Routes.Permissions) {
+            composable(Routes.PERMISSIONS) {
                 PermissionManagementScreen(
                     uiState = uiState,
                     onBack = { navController.popBackStack() },
@@ -222,33 +231,67 @@ fun AILockApp(
                     onOverlayPermission = viewModel::openOverlaySettings,
                     onAccessibilityPermission = viewModel::openAccessibilitySettings,
                     onNotificationPermission = openNotification,
+                    onBatteryPermission = viewModel::openBatteryOptimizationSettings,
                     onRefresh = viewModel::refreshPermissions,
                 )
+            }
+        }
+        if (currentRoute in mainRoutes) {
+            AnimatedVisibility(
+                visible = !bottomNavHidden,
+                enter = slideInVertically { it },
+                exit = slideOutVertically { it },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            ) {
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(132.dp)
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        event.changes.forEach { it.consume() }
+                                    }
+                                }
+                            }
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    0.42f to AppBackground.copy(alpha = 0.68f),
+                                    1f to AppBackground,
+                                ),
+                            ),
+                    )
+                    FloatingBottomNav(
+                        currentRoute = currentRoute ?: Routes.HOME,
+                        onNavigate = { route ->
+                            navController.navigate(route) {
+                                popUpTo(Routes.HOME) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
             }
         }
     }
 }
 
-private fun routeIndex(route: String?): Int = when (route?.substringBefore('/')) {
-    Routes.Home -> 0
-    Routes.Records -> 1
-    Routes.Restrictions -> 2
-    Routes.Settings -> 3
-    Routes.RestrictionAdd, Routes.RestrictionEdit, Routes.AppPicker -> 4
-    Routes.Profile, Routes.Permissions -> 5
-    Routes.Onboarding -> -1
-    else -> 0
+object Routes {
+    const val ONBOARDING = "onboarding"
+    const val HOME = "home"
+    const val RECORDS = "records"
+    const val RESTRICTIONS = "restrictions"
+    const val SETTINGS = "settings"
+    const val RESTRICTION_ADD = "restriction_add"
+    const val RESTRICTION_EDIT = "restriction_edit"
+    const val APP_PICKER = "app_picker"
+    const val PROFILE = "profile"
+    const val PERMISSIONS = "permissions"
 }
 
-object Routes {
-    const val Onboarding = "onboarding"
-    const val Home = "home"
-    const val Records = "records"
-    const val Restrictions = "restrictions"
-    const val Settings = "settings"
-    const val RestrictionAdd = "restriction_add"
-    const val RestrictionEdit = "restriction_edit"
-    const val AppPicker = "app_picker"
-    const val Profile = "profile"
-    const val Permissions = "permissions"
-}

@@ -1,13 +1,16 @@
 package com.ccomet.ailock.ui.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -29,9 +32,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +45,8 @@ import com.ccomet.ailock.ui.AILockUiState
 import com.ccomet.ailock.ui.components.PermissionCards
 import com.ccomet.ailock.ui.components.PrimaryButton
 import com.ccomet.ailock.ui.components.SecondaryButton
+import com.ccomet.ailock.ui.theme.AppBorder
+import com.ccomet.ailock.ui.theme.AppSurface
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,14 +55,15 @@ fun SettingsScreen(
     onProfile: () -> Unit,
     onPermissions: () -> Unit,
     onRestartOnboarding: () -> Unit,
-    onBaseUrlChange: (String) -> Unit,
-    onSaveBaseUrl: () -> Unit,
-    onMockChange: (Boolean) -> Unit,
-    onStartMonitor: () -> Unit,
 ) {
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
-        topBar = { TopAppBar(title = { Text("설정") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("설정", modifier = Modifier.padding(start = 4.dp), fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+            )
+        },
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -68,7 +74,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             SettingsCard {
-                Text(uiState.userProfile.name.ifBlank { "이름을 알려줘" }, style = MaterialTheme.typography.titleLarge)
+                Text(uiState.userProfile.name.ifBlank { "이름을 입력해줘" }, style = MaterialTheme.typography.titleLarge)
                 Text("AILock 사용자 정보", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     SecondaryButton("개인정보 수정", onClick = onProfile, modifier = Modifier.weight(1f), icon = Icons.Default.Person)
@@ -81,43 +87,7 @@ fun SettingsScreen(
                     icon = Icons.Default.Refresh,
                 )
             }
-            SettingsCard {
-                Text("백엔드 연결", style = MaterialTheme.typography.titleMedium)
-                OutlinedTextField(
-                    value = uiState.backendBaseUrlInput,
-                    onValueChange = onBaseUrlChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Base URL") },
-                    singleLine = true,
-                    supportingText = {
-                        Text("에뮬레이터: http://10.0.2.2:8080/ 또는 /testFinal까지 입력해도 자동 보정. 실제 폰은 서버 PC의 같은 Wi-Fi IP를 사용해요.")
-                    },
-                )
-                PrimaryButton("주소 저장", onClick = onSaveBaseUrl, modifier = Modifier.fillMaxWidth())
-            }
-            SettingsCard {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Mock AI mode", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "끄면 실제 백엔드 /testFinal로 요청하고, 실패할 때만 mock으로 대체합니다.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(checked = uiState.mockAiMode, onCheckedChange = onMockChange)
-                }
-                PrimaryButton("사용 모니터 서비스 시작", onClick = onStartMonitor, modifier = Modifier.fillMaxWidth())
-            }
-            SettingsCard {
-                Text("앱 정보", style = MaterialTheme.typography.titleMedium)
-                Text("AILock은 강제 차단보다 자기 인식, 약속, 부드러운 개입을 먼저 설계한 HCI 과제용 네이티브 Android 앱입니다.")
-                uiState.statusMessage?.let {
-                    Text(it, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                }
-            }
+            Spacer(Modifier.height(100.dp))
         }
     }
 }
@@ -135,7 +105,8 @@ fun ProfileEditScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("개인정보 수정") },
+                title = { Text("개인정보 수정", fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기")
@@ -197,13 +168,15 @@ fun PermissionManagementScreen(
     onOverlayPermission: () -> Unit,
     onAccessibilityPermission: () -> Unit,
     onNotificationPermission: () -> Unit,
+    onBatteryPermission: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("권한 관리") },
+                title = { Text("권한 관리", fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기")
@@ -226,6 +199,7 @@ fun PermissionManagementScreen(
                 onOverlay = onOverlayPermission,
                 onAccessibility = onAccessibilityPermission,
                 onNotification = onNotificationPermission,
+                onBattery = onBatteryPermission,
             )
             PrimaryButton("권한 상태 새로고침", onClick = onRefresh, modifier = Modifier.fillMaxWidth())
         }
@@ -236,7 +210,8 @@ fun PermissionManagementScreen(
 private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = AppSurface),
+        border = BorderStroke(1.dp, AppBorder),
     ) {
         Column(
             modifier = Modifier
@@ -247,3 +222,5 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
         )
     }
 }
+
+

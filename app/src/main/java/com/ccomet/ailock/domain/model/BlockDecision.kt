@@ -1,4 +1,4 @@
-package com.ccomet.ailock.domain.model
+﻿package com.ccomet.ailock.domain.model
 
 import com.ccomet.ailock.data.model.LockedAppConfig
 
@@ -11,3 +11,4 @@ sealed interface BlockDecision {
         val timeLimitExceeded: Boolean = false,
     ) : BlockDecision
 }
+

@@ -1,9 +1,7 @@
-package com.ccomet.ailock.domain.usecase
+﻿package com.ccomet.ailock.domain.usecase
 
-import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
-import com.ccomet.ailock.data.model.RestrictionType
 import com.ccomet.ailock.data.repository.AILockRepository
 import com.ccomet.ailock.domain.model.BlockDecision
 import com.ccomet.ailock.util.AppListLoader
@@ -27,45 +25,15 @@ class BlockingEngine(
             return BlockDecision.Allow
         }
 
-        return when (config.restrictionType) {
-            RestrictionType.IMMEDIATE_LOCK -> BlockDecision.ShowIntervention(
-                config = config,
-                reason = "immediate lock",
-            )
-
-            RestrictionType.TIME_LIMIT -> {
-                val limit = config.advancedDayLimits[today]
-                    ?: config.dailyLimitMinutes
-                    ?: return BlockDecision.Allow
-                val usedMinutes = usageMinutesToday(packageName)
-                if (usedMinutes >= limit) {
-                    BlockDecision.ShowIntervention(
-                        config = config,
-                        reason = "daily limit exceeded",
-                        timeLimitExceeded = true,
-                    )
-                } else {
-                    BlockDecision.Allow
-                }
-            }
-        }
+        return BlockDecision.ShowIntervention(
+            config = config,
+            reason = "ai unlock judgment",
+        )
     }
 
     suspend fun recordOpen(packageName: String) {
         val appName = appListLoader.appName(packageName)
         repository.recordEvent(packageName, appName, com.ccomet.ailock.data.model.UsageEventType.OPEN)
-    }
-
-    private fun usageMinutesToday(packageName: String): Int {
-        val manager = context.getSystemService(UsageStatsManager::class.java)
-        val start = TimeUtils.todayStartMillis()
-        val end = System.currentTimeMillis()
-        val stats = manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
-        val total = stats
-            ?.filter { it.packageName == packageName }
-            ?.sumOf { it.totalTimeInForeground }
-            ?: 0L
-        return (total / 60_000L).toInt()
     }
 
     private fun ignoreReason(packageName: String): String? {
@@ -86,3 +54,4 @@ class BlockingEngine(
             .toSet()
     }
 }
+

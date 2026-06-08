@@ -1,8 +1,7 @@
-package com.ccomet.ailock.ui
+﻿package com.ccomet.ailock.ui
 
 import android.app.Application
 import android.content.Intent
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -10,7 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.ccomet.ailock.AILockContainer
 import com.ccomet.ailock.data.model.RestrictionType
 import com.ccomet.ailock.data.model.UserProfile
-import com.ccomet.ailock.service.UsageMonitorService
+import com.ccomet.ailock.data.work.SessionWorkScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,16 +58,6 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         viewModelScope.launch {
-            repository.backendBaseUrl.collect { url ->
-                _uiState.update { it.copy(backendBaseUrl = url, backendBaseUrlInput = url) }
-            }
-        }
-        viewModelScope.launch {
-            repository.mockAiMode.collect { enabled ->
-                _uiState.update { it.copy(mockAiMode = enabled) }
-            }
-        }
-        viewModelScope.launch {
             repository.willPowerScore.collect { score ->
                 _uiState.update { it.copy(willPowerScore = score) }
             }
@@ -84,16 +73,32 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
     fun openOverlaySettings() = openIntent(permissionRepository.overlayIntent())
     fun openAccessibilitySettings() = openIntent(permissionRepository.accessibilityIntent())
     fun openNotificationSettings() = openIntent(permissionRepository.notificationSettingsIntent())
+    fun openBatteryOptimizationSettings() = openIntent(permissionRepository.batteryOptimizationIntent())
+
+    fun openNextMissingPermission() {
+        refreshPermissions()
+        val permissions = _uiState.value.permissions
+        when {
+            !permissions.hasUsageAccess -> openUsageAccessSettings()
+            !permissions.isAccessibilityEnabled -> openAccessibilitySettings()
+            !permissions.canDrawOverlays -> openOverlaySettings()
+            !permissions.isIgnoringBatteryOptimizations -> openBatteryOptimizationSettings()
+            else -> finishOnboarding()
+        }
+    }
 
     fun nextOnboardingStep() {
+        val currentStep = _uiState.value.onboardingStep
         _uiState.update {
             val next = (it.onboardingStep + 1).coerceAtMost(4)
             it.copy(
                 onboardingStep = next,
-                isEditingProfile = next == 3,
-                profileDraft = if (next == 3) it.profileDraft.takeUnless { draft -> draft.isBlank() } ?: it.userProfile else it.profileDraft,
+                isEditingProfile = next == 2,
+                profileDraft = if (next == 2) it.profileDraft.takeUnless { draft -> draft.isBlank() } ?: it.userProfile else it.profileDraft,
+                appQuery = if (next == 3 && currentStep != 3) "" else it.appQuery,
             )
         }
+        if (_uiState.value.onboardingStep == 3) reloadInstalledApps()
     }
 
     fun previousOnboardingStep() {
@@ -104,7 +109,7 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update {
             it.copy(
                 onboardingStep = 3,
-                isEditingProfile = true,
+                isEditingProfile = false,
                 profileDraft = it.profileDraft.takeUnless { draft -> draft.isBlank() } ?: it.userProfile,
                 statusMessage = "디버그 모드로 권한 없이 계속합니다.",
             )
@@ -128,8 +133,65 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun saveProfileAndFinish() {
+        val profile = _uiState.value.profileDraft
+        viewModelScope.launch {
+            repository.saveUserProfile(profile)
+            _uiState.update { it.copy(userProfile = profile, profileDraft = profile, isEditingProfile = false) }
+            repository.setOnboardingCompleted(true)
+        }
+    }
+
     fun finishOnboarding() {
         viewModelScope.launch { repository.setOnboardingCompleted(true) }
+    }
+
+    fun toggleOnboardingApp(packageName: String) {
+        val app = _uiState.value.installedApps.firstOrNull { it.packageName == packageName } ?: return
+        _uiState.update {
+            val current = it.onboardingSelectedPackages
+            if (packageName in current) {
+                it.copy(
+                    onboardingSelectedPackages = current - packageName,
+                    onboardingSelectedApps = it.onboardingSelectedApps.filterNot { selected -> selected.packageName == packageName },
+                )
+            } else {
+                it.copy(
+                    onboardingSelectedPackages = current + packageName,
+                    onboardingSelectedApps = it.onboardingSelectedApps + app,
+                )
+            }
+        }
+    }
+
+    fun saveOnboardingAppsAndContinue() {
+        val snapshot = _uiState.value
+        val selectedApps = snapshot.onboardingSelectedApps
+        if (selectedApps.isEmpty()) {
+            _uiState.update { it.copy(statusMessage = "관리할 앱을 하나 이상 골라주세요.") }
+            return
+        }
+        viewModelScope.launch {
+            selectedApps.forEachIndexed { index, app ->
+                repository.upsertLockedApp(
+                    LockedAppDraft(
+                        id = System.currentTimeMillis() + index,
+                        packageName = app.packageName,
+                        appName = app.appName,
+                        dailyLimitMinutes = 120,
+                    ).toConfig(),
+                )
+            }
+            _uiState.update {
+                it.copy(
+                    onboardingSelectedPackages = emptySet(),
+                    onboardingSelectedApps = emptyList(),
+                    appQuery = "",
+                    statusMessage = "${selectedApps.joinToString(", ") { app -> app.appName }} 제한을 저장했어요.",
+                )
+            }
+            nextOnboardingStep()
+        }
     }
 
     fun restartOnboarding() {
@@ -175,10 +237,10 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
                     lockReasonPreset = config.lockReasonPreset,
                     lockReasonCustom = config.lockReasonCustom,
                     restrictionType = config.restrictionType,
-                    selectedDays = config.selectedDays,
-                    dailyLimitMinutes = config.dailyLimitMinutes ?: 30,
-                    advancedDayLimits = config.advancedDayLimits,
-                    isAdvancedSchedule = config.isAdvancedSchedule,
+                    selectedDays = DayOfWeek.entries.toSet(),
+                    dailyLimitMinutes = config.dailyLimitMinutes ?: 120,
+                    advancedDayLimits = emptyMap(),
+                    isAdvancedSchedule = false,
                     createdAt = config.createdAt,
                 ),
             )
@@ -217,7 +279,7 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun updateDailyLimit(minutes: Int) {
-        _uiState.update { it.copy(draft = it.draft.copy(dailyLimitMinutes = minutes)) }
+        _uiState.update { it.copy(draft = it.draft.copy(dailyLimitMinutes = minutes.coerceIn(0, 23 * 60 + 59))) }
     }
 
     fun toggleAdvancedSchedule() {
@@ -243,7 +305,7 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
     fun saveDraft(onSaved: () -> Unit) {
         val draft = _uiState.value.draft
         if (!draft.isValid) {
-            _uiState.update { it.copy(statusMessage = "앱, 이유, 제한 방식을 먼저 채워주세요.") }
+            _uiState.update { it.copy(statusMessage = "앱과 판단 기준을 먼저 채워주세요.") }
             return
         }
         viewModelScope.launch {
@@ -254,33 +316,28 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun deleteDraft(onDeleted: () -> Unit) {
-        val id = _uiState.value.draft.id ?: return
+        val draft = _uiState.value.draft
+        val id = draft.id ?: return
         viewModelScope.launch {
             repository.deleteLockedApp(id)
+            SessionWorkScheduler.cancelAllForPackage(getApplication(), draft.packageName)
+            container.activeUseSessionRepository.clear(draft.packageName)
+            container.pendingFinalDecisionRepository.clear(draft.packageName)
             _uiState.update { it.copy(statusMessage = "제한 앱을 삭제했어요.") }
             onDeleted()
         }
     }
 
-    fun updateBackendBaseUrlInput(url: String) {
-        _uiState.update { it.copy(backendBaseUrlInput = url) }
-    }
-
-    fun saveBackendBaseUrl() {
+    fun deleteLockedApp(id: Long, onDeleted: () -> Unit = {}) {
+        val config = _uiState.value.lockedApps.firstOrNull { it.id == id } ?: return
         viewModelScope.launch {
-            repository.setBackendBaseUrl(_uiState.value.backendBaseUrlInput)
-            _uiState.update { it.copy(statusMessage = "백엔드 주소를 저장했어요.") }
+            repository.deleteLockedApp(id)
+            SessionWorkScheduler.cancelAllForPackage(getApplication(), config.packageName)
+            container.activeUseSessionRepository.clear(config.packageName)
+            container.pendingFinalDecisionRepository.clear(config.packageName)
+            _uiState.update { it.copy(statusMessage = "${config.appName} 제한을 삭제했어요.") }
+            onDeleted()
         }
-    }
-
-    fun setMockAiMode(enabled: Boolean) {
-        viewModelScope.launch { repository.setMockAiMode(enabled) }
-    }
-
-    fun startUsageMonitor() {
-        val context = getApplication<Application>()
-        ContextCompat.startForegroundService(context, Intent(context, UsageMonitorService::class.java))
-        _uiState.update { it.copy(statusMessage = "사용 모니터 서비스를 시작했어요.") }
     }
 
     private fun reloadInstalledApps() {
@@ -297,7 +354,11 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun openIntent(intent: Intent) {
-        getApplication<Application>().startActivity(intent)
+        runCatching {
+            getApplication<Application>().startActivity(intent)
+        }.onFailure {
+            _uiState.update { state -> state.copy(statusMessage = "설정 화면을 열 수 없어요. 기기 설정에서 권한을 직접 확인해주세요.") }
+        }
     }
 
     private fun UserProfile.isBlank(): Boolean =
@@ -310,3 +371,4 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 }
+

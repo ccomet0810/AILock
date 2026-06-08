@@ -1,11 +1,10 @@
-package com.ccomet.ailock.data.repository
+﻿package com.ccomet.ailock.data.repository
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import com.ccomet.ailock.BuildConfig
 import com.ccomet.ailock.data.local.ailockDataStore
 import com.ccomet.ailock.data.model.LockedAppConfig
 import com.ccomet.ailock.data.model.UsageEventType
@@ -15,7 +14,9 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.util.UUID
 
 class AILockRepository(private val context: Context) {
     private val gson = Gson()
@@ -33,12 +34,6 @@ class AILockRepository(private val context: Context) {
     val usageRecords: Flow<List<UsageRecord>> = context.ailockDataStore.data
         .map { preferences -> parseUsageRecords(preferences[USAGE_RECORDS]) }
 
-    val backendBaseUrl: Flow<String> = context.ailockDataStore.data
-        .map { preferences -> preferences[BACKEND_BASE_URL] ?: BuildConfig.DEFAULT_BASE_URL }
-
-    val mockAiMode: Flow<Boolean> = context.ailockDataStore.data
-        .map { preferences -> preferences[MOCK_AI_MODE] ?: false }
-
     val willPowerScore: Flow<Int> = context.ailockDataStore.data
         .map { preferences -> preferences[WILL_POWER_SCORE] ?: DEFAULT_WILL_POWER_SCORE }
 
@@ -48,14 +43,6 @@ class AILockRepository(private val context: Context) {
 
     suspend fun saveUserProfile(profile: UserProfile) {
         context.ailockDataStore.edit { it[USER_PROFILE] = gson.toJson(profile) }
-    }
-
-    suspend fun setBackendBaseUrl(url: String) {
-        context.ailockDataStore.edit { it[BACKEND_BASE_URL] = normalizeBackendBaseUrl(url) }
-    }
-
-    suspend fun setMockAiMode(enabled: Boolean) {
-        context.ailockDataStore.edit { it[MOCK_AI_MODE] = enabled }
     }
 
     suspend fun upsertLockedApp(config: LockedAppConfig) {
@@ -158,21 +145,14 @@ class AILockRepository(private val context: Context) {
         }
     }.getOrDefault(emptyList())
 
-    private fun normalizeBackendBaseUrl(url: String): String {
-        val trimmed = url.trim().ifBlank { BuildConfig.DEFAULT_BASE_URL }
-        val withoutEndpoint = trimmed.replace(Regex("/testFinal/?$", RegexOption.IGNORE_CASE), "")
-        return if (withoutEndpoint.endsWith("/")) withoutEndpoint else "$withoutEndpoint/"
-    }
-
     companion object {
         private val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         private val USER_PROFILE = stringPreferencesKey("user_profile")
         private val LOCKED_APPS = stringPreferencesKey("locked_apps")
         private val USAGE_RECORDS = stringPreferencesKey("usage_records")
-        private val BACKEND_BASE_URL = stringPreferencesKey("backend_base_url")
-        private val MOCK_AI_MODE = booleanPreferencesKey("mock_ai_mode")
         private val WILL_POWER_SCORE = intPreferencesKey("will_power_score")
         private const val MAX_STORED_RECORDS = 500
         private const val DEFAULT_WILL_POWER_SCORE = 80
     }
 }
+

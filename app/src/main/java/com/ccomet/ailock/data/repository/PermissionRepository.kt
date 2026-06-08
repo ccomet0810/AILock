@@ -6,11 +6,12 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import com.ccomet.ailock.data.model.PermissionState
 import com.ccomet.ailock.service.AILockAccessibilityService
 
@@ -20,6 +21,7 @@ class PermissionRepository(private val context: Context) {
         canDrawOverlays = Settings.canDrawOverlays(context),
         isAccessibilityEnabled = isAccessibilityServiceEnabled(),
         hasNotificationPermission = hasNotificationPermission(),
+        isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations(),
     )
 
     fun usageAccessIntent(): Intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
@@ -27,7 +29,7 @@ class PermissionRepository(private val context: Context) {
 
     fun overlayIntent(): Intent = Intent(
         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-        Uri.parse("package:${context.packageName}"),
+        "package:${context.packageName}".toUri(),
     ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     fun accessibilityIntent(): Intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
@@ -37,9 +39,13 @@ class PermissionRepository(private val context: Context) {
         .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
+    fun batteryOptimizationIntent(): Intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
     private fun hasUsageAccess(): Boolean {
         val appOps = context.getSystemService(AppOpsManager::class.java)
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            @Suppress("DEPRECATION")
             appOps.unsafeCheckOpNoThrow(
                 AppOpsManager.OPSTR_GET_USAGE_STATS,
                 Process.myUid(),
@@ -64,6 +70,11 @@ class PermissionRepository(private val context: Context) {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        val powerManager = context.getSystemService(PowerManager::class.java)
+        return powerManager.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
     private fun isAccessibilityServiceEnabled(): Boolean {
         val expected = ComponentName(context, AILockAccessibilityService::class.java)
             .flattenToString()
@@ -74,3 +85,4 @@ class PermissionRepository(private val context: Context) {
         return enabledServices.split(':').any { it.equals(expected, ignoreCase = true) }
     }
 }
+

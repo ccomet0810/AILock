@@ -29,8 +29,7 @@ class AppListLoader(private val context: Context) {
                 val activityInfo = info.activityInfo ?: return@mapNotNull null
                 val packageName = activityInfo.packageName
                 if (packageName == context.packageName) return@mapNotNull null
-                val label = info.loadLabel(packageManager)?.toString()
-                    ?: packageName.substringAfterLast('.')
+                val label = info.loadLabel(packageManager).toString()
                 InstalledAppInfo(
                     packageName = packageName,
                     appName = label,
@@ -77,3 +76,4 @@ class AppListLoader(private val context: Context) {
         }
     }
 }
+

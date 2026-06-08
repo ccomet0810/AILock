@@ -1,4 +1,4 @@
-package com.ccomet.ailock.service
+﻿package com.ccomet.ailock.service
 
 import android.app.Service
 import android.content.Context
@@ -23,13 +23,23 @@ class OverlayService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
+        if (AILockOverlayController.isShowingFor(packageName)) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
 
         scope.launch {
             val container = AILockContainer.get(applicationContext)
             val config = container.ailockRepository.lockedApps.first()
                 .firstOrNull { it.packageName == packageName }
             if (config != null) {
-                AILockOverlayController.show(applicationContext, config, timeLimitExceeded)
+                AILockOverlayController.show(
+                    context = applicationContext,
+                    config = config,
+                    timeLimitExceeded = timeLimitExceeded,
+                    initialSession = container.activeUseSessionRepository.get(packageName),
+                    initialPending = container.pendingFinalDecisionRepository.get(packageName),
+                )
             }
             stopSelf(startId)
         }
@@ -48,3 +58,4 @@ class OverlayService : Service() {
         }
     }
 }
+

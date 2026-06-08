@@ -1,6 +1,5 @@
-package com.ccomet.ailock.ui
+﻿package com.ccomet.ailock.ui
 
-import com.ccomet.ailock.BuildConfig
 import com.ccomet.ailock.data.model.InstalledAppInfo
 import com.ccomet.ailock.data.model.LockedAppConfig
 import com.ccomet.ailock.data.model.PermissionState
@@ -20,10 +19,9 @@ data class AILockUiState(
     val usageRecords: List<UsageRecord> = emptyList(),
     val installedApps: List<InstalledAppInfo> = emptyList(),
     val appQuery: String = "",
+    val onboardingSelectedPackages: Set<String> = emptySet(),
+    val onboardingSelectedApps: List<InstalledAppInfo> = emptyList(),
     val draft: LockedAppDraft = LockedAppDraft(),
-    val backendBaseUrl: String = BuildConfig.DEFAULT_BASE_URL,
-    val backendBaseUrlInput: String = BuildConfig.DEFAULT_BASE_URL,
-    val mockAiMode: Boolean = false,
     val willPowerScore: Int = 80,
     val statusMessage: String? = null,
 )
@@ -36,7 +34,7 @@ data class LockedAppDraft(
     val lockReasonCustom: String = "",
     val restrictionType: RestrictionType = RestrictionType.IMMEDIATE_LOCK,
     val selectedDays: Set<DayOfWeek> = DayOfWeek.entries.toSet(),
-    val dailyLimitMinutes: Int = 30,
+    val dailyLimitMinutes: Int = 120,
     val advancedDayLimits: Map<DayOfWeek, Int> = emptyMap(),
     val isAdvancedSchedule: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
@@ -50,11 +48,7 @@ data class LockedAppDraft(
     val isValid: Boolean
         get() = packageName.isNotBlank() &&
             appName.isNotBlank() &&
-            lockReasonFinal.isNotBlank() &&
-            when (restrictionType) {
-                RestrictionType.IMMEDIATE_LOCK -> true
-                RestrictionType.TIME_LIMIT -> selectedDays.isNotEmpty() && dailyLimitMinutes > 0
-            }
+            dailyLimitMinutes >= 0
 
     fun toConfig(): LockedAppConfig = LockedAppConfig(
         id = id ?: System.currentTimeMillis(),
@@ -63,11 +57,11 @@ data class LockedAppDraft(
         lockReasonPreset = lockReasonPreset,
         lockReasonCustom = lockReasonCustom,
         lockReasonFinal = lockReasonFinal,
-        restrictionType = restrictionType,
-        selectedDays = selectedDays,
-        dailyLimitMinutes = if (restrictionType == RestrictionType.TIME_LIMIT) dailyLimitMinutes else null,
-        advancedDayLimits = if (isAdvancedSchedule) advancedDayLimits else emptyMap(),
-        isAdvancedSchedule = isAdvancedSchedule,
+        restrictionType = RestrictionType.IMMEDIATE_LOCK,
+        selectedDays = DayOfWeek.entries.toSet(),
+        dailyLimitMinutes = dailyLimitMinutes,
+        advancedDayLimits = emptyMap(),
+        isAdvancedSchedule = false,
         createdAt = createdAt,
         updatedAt = System.currentTimeMillis(),
     )
@@ -76,3 +70,4 @@ data class LockedAppDraft(
         const val DIRECT_INPUT = "직접 입력"
     }
 }
+

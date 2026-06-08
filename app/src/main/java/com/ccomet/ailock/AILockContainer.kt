@@ -1,8 +1,10 @@
-package com.ccomet.ailock
+﻿package com.ccomet.ailock
 
 import android.content.Context
 import com.ccomet.ailock.data.repository.AILockRepository
-import com.ccomet.ailock.data.repository.AiDecisionRepository
+import com.ccomet.ailock.data.repository.ActiveUseSessionRepository
+import com.ccomet.ailock.data.repository.OllamaDecisionRepository
+import com.ccomet.ailock.data.repository.PendingFinalDecisionRepository
 import com.ccomet.ailock.data.repository.PermissionRepository
 import com.ccomet.ailock.domain.usecase.BlockingEngine
 import com.ccomet.ailock.service.NotificationHelper
@@ -12,7 +14,9 @@ class AILockContainer private constructor(context: Context) {
     private val appContext = context.applicationContext
 
     val ailockRepository = AILockRepository(appContext)
-    val aiDecisionRepository = AiDecisionRepository()
+    val ollamaDecisionRepository = OllamaDecisionRepository()
+    val activeUseSessionRepository = ActiveUseSessionRepository(appContext)
+    val pendingFinalDecisionRepository = PendingFinalDecisionRepository(appContext)
     val permissionRepository = PermissionRepository(appContext)
     val appListLoader = AppListLoader(appContext)
     val notificationHelper = NotificationHelper(appContext)
@@ -31,3 +35,4 @@ class AILockContainer private constructor(context: Context) {
         }
     }
 }
+

@@ -1,4 +1,4 @@
-package com.ccomet.ailock.data.model
+﻿package com.ccomet.ailock.data.model
 
 import android.graphics.drawable.Drawable
 import java.time.DayOfWeek
@@ -15,9 +15,13 @@ data class PermissionState(
     val canDrawOverlays: Boolean = false,
     val isAccessibilityEnabled: Boolean = false,
     val hasNotificationPermission: Boolean = false,
+    val isIgnoringBatteryOptimizations: Boolean = false,
 ) {
     val allRequiredGranted: Boolean
-        get() = hasUsageAccess && canDrawOverlays && isAccessibilityEnabled && hasNotificationPermission
+        get() = hasUsageAccess &&
+            canDrawOverlays &&
+            isAccessibilityEnabled &&
+            isIgnoringBatteryOptimizations
 }
 
 data class InstalledAppInfo(
@@ -40,8 +44,8 @@ enum class AppCategory(val label: String) {
 }
 
 enum class RestrictionType(val label: String) {
-    IMMEDIATE_LOCK("지금 바로 잠금"),
-    TIME_LIMIT("사용 시간 제한"),
+    IMMEDIATE_LOCK("즉시 개입"),
+    TIME_LIMIT("시간 제한"),
 }
 
 data class LockedAppConfig(
@@ -88,34 +92,6 @@ enum class UsageEventType {
     FORCE_HOME,
 }
 
-data class CurrentStats(
-    val willPowerScore: Int = 80,
-    val todayOpenAppCount: Int = 0,
-    val accumUseApp: Int = 0,
-)
-
-data class AiDecisionRequest(
-    val appName: String,
-    val userInput: String,
-    val lockReason: String,
-    val currentStats: CurrentStats,
-)
-
-data class AiDecisionResponse(
-    val status: AiDecisionStatus = AiDecisionStatus.WARNING,
-    val text: String = "좋아, 딱 10분만 보고 마무리하자.",
-    val allowedTime: Int = 10,
-    val source: String? = null,
-)
-
-enum class AiDecisionStatus {
-    OPTIMAL,
-    WARNING,
-    OVERUSE,
-    CRITICAL,
-    FAIL,
-}
-
 enum class PandaEmotion {
     DEFAULT,
     HAPPY,
@@ -126,3 +102,4 @@ enum class PandaEmotion {
     SAD,
     DISAPPOINTED,
 }
+

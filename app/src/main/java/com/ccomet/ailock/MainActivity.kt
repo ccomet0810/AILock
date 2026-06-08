@@ -1,4 +1,4 @@
-package com.ccomet.ailock
+﻿package com.ccomet.ailock
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -17,3 +17,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
