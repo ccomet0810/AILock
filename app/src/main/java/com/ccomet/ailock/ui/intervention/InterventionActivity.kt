@@ -1,5 +1,6 @@
 ﻿package com.ccomet.ailock.ui.intervention
 
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color.TRANSPARENT
@@ -77,7 +78,9 @@ import com.ccomet.ailock.R
 import com.ccomet.ailock.data.model.ActiveUseSession
 import com.ccomet.ailock.data.model.JudgePostRequest
 import com.ccomet.ailock.data.model.JudgePreRequest
+import com.ccomet.ailock.data.model.LockedAppConfig
 import com.ccomet.ailock.data.model.PendingFinalDecision
+import com.ccomet.ailock.data.model.UsageEventType
 import com.ccomet.ailock.service.AILockAccessibilityService
 import com.ccomet.ailock.service.OverlayService
 import com.ccomet.ailock.ui.components.PrimaryButton
@@ -92,6 +95,7 @@ import com.ccomet.ailock.ui.theme.AppSurfaceMuted
 import com.ccomet.ailock.ui.theme.AppTextStrong
 import com.ccomet.ailock.ui.theme.AppTextSubtle
 import com.ccomet.ailock.ui.theme.PandaOrange
+import com.ccomet.ailock.util.TimeUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -232,15 +236,21 @@ private fun InterventionRoute(
                         screenState = InterventionScreenState.LOADING
                         requestJob = scope.launch {
                             runCatching {
+                                val dailyLimit = dailyLimitMinutes(config)
+                                val todayUsage = todayUsageMinutes(appContext, config.packageName)
+                                recordAiRequest(container, config, reasonInput)
                                 if (isAdditionalRequest) {
                                     val session = activeSession ?: container.activeUseSessionRepository.get(config.packageName)
                                     requireNotNull(session)
                                     val post = container.ollamaDecisionRepository.judgePost(
                                         JudgePostRequest(
+                                            sessionId = session.sessionId,
                                             appName = config.appName,
                                             previousReason = session.preInput,
                                             postInput = reasonInput,
                                             requestCount = 1,
+                                            todayAppUsageMinutes = todayUsage,
+                                            dailyLimitMinutes = dailyLimit,
                                         ),
                                     )
                                     PendingFinalDecision(
@@ -248,14 +258,18 @@ private fun InterventionRoute(
                                         status = post.status,
                                         allowedTime = post.allowedTime,
                                         supportMessage = post.supportMessage,
+                                        userInput = reasonInput,
+                                        stateScore = post.stateScore,
+                                        finalDecision = post.finalDecision,
                                     )
                                 } else {
-                                    val requestedMinutes = (config.dailyLimitMinutes ?: 10).coerceIn(1, 30)
                                     val pre = container.ollamaDecisionRepository.judgePre(
                                         JudgePreRequest(
                                             appName = config.appName,
                                             preInput = reasonInput,
-                                            requestUseTime = requestedMinutes,
+                                            requestUseTime = requestedMinutes(dailyLimit, todayUsage),
+                                            todayAppUsageMinutes = todayUsage,
+                                            dailyLimitMinutes = dailyLimit,
                                         ),
                                     )
                                     PendingFinalDecision(
@@ -263,9 +277,14 @@ private fun InterventionRoute(
                                         status = pre.status,
                                         allowedTime = pre.allowedTime,
                                         supportMessage = pre.supportMessage,
+                                        userInput = reasonInput,
+                                        stateScore = pre.stateScore,
+                                        finalDecision = pre.finalDecision,
+                                        reasonForDecision = pre.reason,
                                     )
                                 }
                             }.onSuccess { decision ->
+                                recordAiResult(container, config, reasonInput, decision)
                                 pendingDecision = decision
                                 screenState = InterventionScreenState.RESULT
                             }.onFailure { throwable ->
@@ -713,9 +732,63 @@ private fun scheduleTimeExpiredIntervention(
     }
 }
 
+private suspend fun recordAiRequest(
+    container: AILockContainer,
+    config: LockedAppConfig,
+    input: String,
+) {
+    container.ailockRepository.recordEvent(
+        packageName = config.packageName,
+        appName = config.appName,
+        eventType = UsageEventType.AI_REQUEST,
+        userInput = input,
+        lockReason = config.lockReasonFinal.ifBlank { config.lockReasonCustom },
+    )
+}
+
+private suspend fun recordAiResult(
+    container: AILockContainer,
+    config: LockedAppConfig,
+    input: String,
+    decision: PendingFinalDecision,
+) {
+    container.ailockRepository.recordEvent(
+        packageName = config.packageName,
+        appName = config.appName,
+        eventType = if (decision.allowedTime > 0) UsageEventType.AI_ALLOWED else UsageEventType.AI_DENIED,
+        aiStatus = decision.status,
+        aiAllowedTime = decision.allowedTime,
+        userInput = input,
+        lockReason = decision.supportMessage ?: decision.reasonForDecision,
+    )
+}
+
 private suspend fun closeSession(container: AILockContainer, packageName: String) {
     container.pendingFinalDecisionRepository.clear(packageName)
     container.activeUseSessionRepository.clear(packageName)
+}
+
+private fun dailyLimitMinutes(config: LockedAppConfig): Int {
+    val today = TimeUtils.currentDayOfWeek()
+    return (config.advancedDayLimits[today] ?: config.dailyLimitMinutes ?: DEFAULT_DAILY_LIMIT_MINUTES)
+        .coerceAtLeast(1)
+}
+
+private fun todayUsageMinutes(context: Context, packageName: String): Int {
+    val manager = context.getSystemService(UsageStatsManager::class.java)
+    val start = TimeUtils.todayStartMillis()
+    val end = System.currentTimeMillis()
+    val stats = manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
+    val total = stats
+        ?.filter { it.packageName == packageName }
+        ?.sumOf { it.totalTimeInForeground }
+        ?: 0L
+    return (total / 60_000L).toInt()
+}
+
+private fun requestedMinutes(dailyLimit: Int, todayUsage: Int): Int {
+    val remaining = (dailyLimit - todayUsage).coerceAtLeast(1)
+    return remaining.coerceAtMost(DEFAULT_ALLOW_MINUTES)
 }
 
 private fun remainingInputMinutes(dailyLimitMinutes: Int?, session: ActiveUseSession?): Int {
@@ -741,4 +814,6 @@ private fun formatTimer(minutes: Int): String {
     return "00 : ${safeMinutes.toString().padStart(2, '0')} : 00"
 }
 
+private const val DEFAULT_ALLOW_MINUTES = 3
+private const val DEFAULT_DAILY_LIMIT_MINUTES = 120
 

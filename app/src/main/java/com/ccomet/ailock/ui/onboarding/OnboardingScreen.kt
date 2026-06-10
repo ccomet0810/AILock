@@ -88,6 +88,15 @@ fun OnboardingScreen(
     onSaveAppsAndContinue: () -> Unit,
     onFinish: () -> Unit,
 ) {
+    if (uiState.onboardingStep >= WelcomeStep) {
+        NameOnlyOnboardingScreen(
+            profile = uiState.profileDraft,
+            onProfileChange = onProfileChange,
+            onFinish = onFinish,
+        )
+        return
+    }
+
     val step = uiState.onboardingStep.coerceIn(WelcomeStep, LastOnboardingStep)
 
     if (step == WelcomeStep) {
@@ -198,6 +207,52 @@ fun OnboardingScreen(
                 onSaveProfileAndContinue = onSaveProfileAndContinue,
                 onSaveAppsAndContinue = onSaveAppsAndContinue,
                 onFinish = onFinish,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+    }
+}
+
+@Composable
+private fun NameOnlyOnboardingScreen(
+    profile: UserProfile,
+    onProfileChange: (UserProfile) -> Unit,
+    onFinish: () -> Unit,
+) {
+    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
+                .imePadding()
+                .padding(horizontal = AILockSpacing.screenHorizontal, vertical = AILockSpacing.sectionGap),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = AILockLayout.bottomActionAreaHeight),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                PandaSpeechBubble(
+                    text = "반가워! 이름만 알려주면 바로 시작할게.",
+                    emotion = PandaEmotion.HAPPY,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(AILockSpacing.sectionGap))
+                AilockOutlinedTextField(
+                    value = profile.name,
+                    onValueChange = { onProfileChange(profile.copy(name = it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = "이름",
+                )
+            }
+            FloatingBottomActionButton(
+                text = "시작하기",
+                onClick = onFinish,
+                enabled = profile.name.isNotBlank(),
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }

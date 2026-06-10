@@ -10,10 +10,13 @@ data class JudgePreRequest(
 )
 
 data class JudgePostRequest(
+    val sessionId: String = "",
     val appName: String,
     val previousReason: String,
     val postInput: String,
     val requestCount: Int = 1,
+    val todayAppUsageMinutes: Int = 0,
+    val dailyLimitMinutes: Int = 120,
 )
 
 data class JudgePreResponse(
@@ -52,30 +55,4 @@ data class JudgmentCheck(
     val riskScore: Int,
     val weight: Float,
     val reason: String,
-)
-
-data class OllamaGenerateRequest(
-    val model: String,
-    val prompt: String,
-    val stream: Boolean = false,
-    val format: String = "json",
-)
-
-data class OllamaGenerateResponse(
-    val response: String? = null,
-)
-
-data class OllamaJudgeJson(
-    val decision: String? = null,
-    val allow_minutes: Int? = null,
-    val message: String? = null,
-    val reason: String? = null,
-    val user_state_level: String? = null,
-)
-
-data class OllamaCheckJson(
-    val check_type: String? = null,
-    val plus_score: Int? = null,
-    val risk_score: Int? = null,
-    val reason: String? = null,
 )

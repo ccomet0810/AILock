@@ -14,7 +14,7 @@ class AILockContainer private constructor(context: Context) {
     private val appContext = context.applicationContext
 
     val ailockRepository = AILockRepository(appContext)
-    val ollamaDecisionRepository = OllamaDecisionRepository()
+    val ollamaDecisionRepository = OllamaDecisionRepository(appContext)
     val activeUseSessionRepository = ActiveUseSessionRepository(appContext)
     val pendingFinalDecisionRepository = PendingFinalDecisionRepository(appContext)
     val permissionRepository = PermissionRepository(appContext)

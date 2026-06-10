@@ -35,10 +35,12 @@ import android.widget.TextView
 import com.ccomet.ailock.AILockContainer
 import com.ccomet.ailock.R
 import com.ccomet.ailock.data.model.ActiveUseSession
+import com.ccomet.ailock.data.model.JudgePostRequest
 import com.ccomet.ailock.data.model.JudgePreRequest
 import com.ccomet.ailock.data.model.LockedAppConfig
 import com.ccomet.ailock.data.model.PendingFinalDecision
 import com.ccomet.ailock.data.model.PreviousUnlockRequest
+import com.ccomet.ailock.data.model.UsageEventType
 import com.ccomet.ailock.data.work.SessionWorkScheduler
 import com.ccomet.ailock.ui.intervention.InterventionActivity
 import com.ccomet.ailock.util.TimeUtils
@@ -425,27 +427,65 @@ object AILockOverlayController {
         }
         private suspend fun judgeUnlock(input: String): PendingFinalDecision {
             val dailyLimit = dailyLimitMinutes()
-            val pre = container.ollamaDecisionRepository.judgePre(
-                JudgePreRequest(
-                    appName = config.appName,
-                    preInput = input,
-                    requestUseTime = DEFAULT_ALLOW_MINUTES,
-                    todayAppUsageMinutes = todayUsageMinutes(),
-                    dailyLimitMinutes = dailyLimit,
-                    previousRequest = pending?.toPreviousRequest(),
-                ),
-            )
-            return PendingFinalDecision(
-                sessionId = pre.sessionId,
-                status = pre.status,
-                allowedTime = pre.allowedTime,
-                supportMessage = pre.supportMessage,
+            val todayUsage = todayUsageMinutes()
+            container.ailockRepository.recordEvent(
+                packageName = config.packageName,
+                appName = config.appName,
+                eventType = UsageEventType.AI_REQUEST,
                 userInput = input,
-                stateScore = pre.stateScore,
-                finalDecision = pre.finalDecision,
-                reasonForDecision = pre.reason,
-            ).also {
-                if (it.allowedTime > 0) {
+                lockReason = config.lockReasonFinal.ifBlank { config.lockReasonCustom },
+            )
+
+            val currentSession = session ?: container.activeUseSessionRepository.get(config.packageName)
+                ?.also { session = it }
+            val decision = if (timeLimitExceeded && currentSession != null) {
+                val post = container.ollamaDecisionRepository.judgePost(
+                    JudgePostRequest(
+                        sessionId = currentSession.sessionId,
+                        appName = config.appName,
+                        previousReason = currentSession.preInput,
+                        postInput = input,
+                        requestCount = 1,
+                        todayAppUsageMinutes = todayUsage,
+                        dailyLimitMinutes = dailyLimit,
+                    ),
+                )
+                PendingFinalDecision(
+                    sessionId = currentSession.sessionId,
+                    status = post.status,
+                    allowedTime = post.allowedTime,
+                    supportMessage = post.supportMessage,
+                    userInput = input,
+                    stateScore = post.stateScore,
+                    finalDecision = post.finalDecision,
+                )
+            } else {
+                val pre = container.ollamaDecisionRepository.judgePre(
+                    JudgePreRequest(
+                        appName = config.appName,
+                        preInput = input,
+                        requestUseTime = requestedMinutes(dailyLimit, todayUsage),
+                        todayAppUsageMinutes = todayUsage,
+                        dailyLimitMinutes = dailyLimit,
+                        previousRequest = pending?.toPreviousRequest(),
+                    ),
+                )
+                PendingFinalDecision(
+                    sessionId = pre.sessionId,
+                    status = pre.status,
+                    allowedTime = pre.allowedTime,
+                    supportMessage = pre.supportMessage,
+                    userInput = input,
+                    stateScore = pre.stateScore,
+                    finalDecision = pre.finalDecision,
+                    reasonForDecision = pre.reason,
+                )
+            }
+
+            recordAiResult(input, decision)
+            return decision.also {
+                pending = it
+                if (it.allowedTime > 0 && currentSession == null) {
                     val now = System.currentTimeMillis()
                     session = ActiveUseSession(
                         packageName = config.packageName,
@@ -887,6 +927,23 @@ object AILockOverlayController {
                 previousUserStateLevel = status ?: "CAUTION",
                 finalDecision = finalDecision,
             )
+
+        private suspend fun recordAiResult(input: String, decision: PendingFinalDecision) {
+            container.ailockRepository.recordEvent(
+                packageName = config.packageName,
+                appName = config.appName,
+                eventType = if (decision.allowedTime > 0) UsageEventType.AI_ALLOWED else UsageEventType.AI_DENIED,
+                aiStatus = decision.status,
+                aiAllowedTime = decision.allowedTime,
+                userInput = input,
+                lockReason = decision.supportMessage ?: decision.reasonForDecision,
+            )
+        }
+
+        private fun requestedMinutes(dailyLimit: Int, todayUsage: Int): Int {
+            val remaining = (dailyLimit - todayUsage).coerceAtLeast(1)
+            return remaining.coerceAtMost(DEFAULT_ALLOW_MINUTES)
+        }
 
         private fun remainingInputMinutes(): Int {
             val sessionRemaining = session?.let {
