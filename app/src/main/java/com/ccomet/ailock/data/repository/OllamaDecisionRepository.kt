@@ -2,7 +2,9 @@ package com.ccomet.ailock.data.repository
 
 import android.content.Context
 import android.provider.Settings
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.ccomet.ailock.BuildConfig
+import com.ccomet.ailock.data.local.ailockDataStore
 import com.ccomet.ailock.data.model.ActiveUseSession
 import com.ccomet.ailock.data.model.JudgePostRequest
 import com.ccomet.ailock.data.model.JudgePostResponse
@@ -13,6 +15,7 @@ import com.ccomet.ailock.data.remote.EvaluateRequest
 import com.ccomet.ailock.data.remote.EvaluateResponse
 import com.ccomet.ailock.data.remote.StartSessionRequest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -21,18 +24,13 @@ import java.util.concurrent.TimeUnit
 
 class OllamaDecisionRepository(context: Context) {
     private val appContext = context.applicationContext
+    private val apiCache = mutableMapOf<String, AiLockBackendApi>()
     private val deviceId: String
         get() = Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
             ?: "ailock-android-device"
 
-    private val api: AiLockBackendApi = Retrofit.Builder()
-        .baseUrl(BACKEND_BASE_URL)
-        .client(httpClient)
-        .addConverterFactory(GsonConverterFactory.create())
-        .build()
-        .create(AiLockBackendApi::class.java)
-
     suspend fun judgePre(request: JudgePreRequest): JudgePreResponse = withContext(Dispatchers.IO) {
+        val api = backendApi()
         val session = api.start(
             StartSessionRequest(
                 deviceId = deviceId,
@@ -64,6 +62,7 @@ class OllamaDecisionRepository(context: Context) {
     }
 
     suspend fun judgePost(request: JudgePostRequest): JudgePostResponse = withContext(Dispatchers.IO) {
+        val api = backendApi()
         val sessionId = request.sessionId.ifBlank {
             api.start(
                 StartSessionRequest(
@@ -111,6 +110,35 @@ class OllamaDecisionRepository(context: Context) {
         return if (normalized in ALLOW_STATUSES || (allowedTime ?: 0) > 0) "ALLOW" else "REJECT"
     }
 
+    private suspend fun backendApi(): AiLockBackendApi {
+        val baseUrl = backendBaseUrl()
+        apiCache[baseUrl]?.let { return it }
+        return synchronized(apiCache) {
+            apiCache[baseUrl] ?: Retrofit.Builder()
+                .baseUrl(baseUrl)
+                .client(httpClient)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+                .create(AiLockBackendApi::class.java)
+                .also { apiCache[baseUrl] = it }
+        }
+    }
+
+    private suspend fun backendBaseUrl(): String {
+        val saved = appContext.ailockDataStore.data.first()[BACKEND_BASE_URL]
+        return normalizeBackendBaseUrl(saved ?: DEFAULT_BACKEND_BASE_URL)
+    }
+
+    private fun normalizeBackendBaseUrl(url: String): String {
+        val trimmed = url.trim().ifBlank { DEFAULT_BACKEND_BASE_URL }
+        val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            trimmed
+        } else {
+            "http://$trimmed"
+        }
+        return if (withScheme.endsWith("/")) withScheme else "$withScheme/"
+    }
+
     private val EvaluateResponse.normalizedStatus: String
         get() = status?.ifBlank { null } ?: if (safeAllowedTime > 0) "APPROVE" else "REJECT"
 
@@ -125,7 +153,8 @@ class OllamaDecisionRepository(context: Context) {
         }
 
     companion object {
-        private val BACKEND_BASE_URL = BuildConfig.AILOCK_BACKEND_BASE_URL
+        private val BACKEND_BASE_URL = stringPreferencesKey("backend_base_url")
+        private val DEFAULT_BACKEND_BASE_URL = BuildConfig.AILOCK_BACKEND_BASE_URL
         private const val SOURCE_BACKEND = "ailock-backend"
         private const val SOURCE_FALLBACK = "backend-fallback"
         private const val DEFAULT_POST_LOCK_MINUTES = 5

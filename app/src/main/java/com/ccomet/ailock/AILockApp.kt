@@ -198,6 +198,7 @@ fun AILockApp(
                             }
                         }
                     },
+                    onBackendBaseUrlSave = viewModel::saveBackendBaseUrl,
                 )
             }
             composable(Routes.RESTRICTION_ADD) {

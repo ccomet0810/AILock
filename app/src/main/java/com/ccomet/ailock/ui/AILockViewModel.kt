@@ -66,6 +66,11 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
                 _uiState.update { it.copy(willPowerScore = score) }
             }
         }
+        viewModelScope.launch {
+            repository.backendBaseUrl.collect { url ->
+                _uiState.update { it.copy(backendBaseUrl = url) }
+            }
+        }
         reloadInstalledApps()
     }
 
@@ -226,6 +231,13 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
                     statusMessage = "개인정보를 저장했어요.",
                 )
             }
+        }
+    }
+
+    fun saveBackendBaseUrl(url: String) {
+        viewModelScope.launch {
+            repository.saveBackendBaseUrl(url)
+            _uiState.update { it.copy(statusMessage = "서버 주소를 저장했어요.") }
         }
     }
 

@@ -73,6 +73,7 @@ fun SettingsScreen(
     onProfile: () -> Unit,
     onPermissions: () -> Unit,
     onRestartOnboarding: () -> Unit,
+    onBackendBaseUrlSave: (String) -> Unit,
 ) {
     val headerMotion = rememberAILockHeaderMotionState(label = "settingsHeaderMotion")
     val headerDragState = rememberDraggableState { delta ->
@@ -82,6 +83,7 @@ fun SettingsScreen(
     var showCreatorDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
+    var backendUrlInput by remember(uiState.backendBaseUrl) { mutableStateOf(uiState.backendBaseUrl) }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -121,6 +123,30 @@ fun SettingsScreen(
                             modifier = Modifier.weight(1f),
                             iconRes = R.drawable.ic_action_permissions,
                         )
+                    }
+                }
+                SettingsCard {
+                    Text("서버 연결", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("현재 테스트할 백엔드 주소", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        value = backendUrlInput,
+                        onValueChange = { backendUrlInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Backend URL") },
+                        singleLine = true,
+                        shape = AILockShape.control,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PandaOrange,
+                            unfocusedBorderColor = AppBorder,
+                            focusedContainerColor = AppSurface,
+                            unfocusedContainerColor = AppSurface,
+                        ),
+                    )
+                    Button(
+                        onClick = { onBackendBaseUrlSave(backendUrlInput) },
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text("저장")
                     }
                 }
             }

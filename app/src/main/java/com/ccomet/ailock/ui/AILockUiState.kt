@@ -23,6 +23,7 @@ data class AILockUiState(
     val onboardingSelectedApps: List<InstalledAppInfo> = emptyList(),
     val draft: LockedAppDraft = LockedAppDraft(),
     val willPowerScore: Int = 80,
+    val backendBaseUrl: String = "",
     val statusMessage: String? = null,
 )
 
