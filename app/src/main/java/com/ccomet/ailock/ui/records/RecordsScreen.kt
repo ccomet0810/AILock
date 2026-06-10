@@ -90,7 +90,6 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
 private val PeriodNavigatorHeight = AILockLayout.collapsedHeaderHeight
-private const val OS_USAGE_LOOKBACK_DAYS = 30L
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -105,11 +104,9 @@ fun RecordsScreen(uiState: AILockUiState) {
     val headerMotion = rememberAILockHeaderMotionState(label = "recordsHeaderMotion")
     val headerNestedScrollConnection = rememberAILockHeaderNestedScrollConnection(headerMotion, listState)
     val earliestRecordDate = remember(uiState.usageRecords) {
-        val osUsageEarliestDate = LocalDate.now().minusDays(OS_USAGE_LOOKBACK_DAYS)
-        val ailockEarliestDate = uiState.usageRecords.minOfOrNull {
+        uiState.usageRecords.minOfOrNull {
             Instant.ofEpochMilli(it.openedAt).atZone(ZoneId.systemDefault()).toLocalDate()
-        }
-        ailockEarliestDate?.coerceAtMost(osUsageEarliestDate) ?: osUsageEarliestDate
+        } ?: LocalDate.now()
     }
 
     val displayedRange = loadedSnapshotKey?.first ?: selectedRange
