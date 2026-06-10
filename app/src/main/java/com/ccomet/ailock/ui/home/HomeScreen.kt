@@ -117,13 +117,10 @@ private fun loadTodayScreenTimeMillis(manager: UsageStatsManager): Long {
     val start = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
     val end = System.currentTimeMillis()
     val elapsedMillis = (end - start).coerceAtLeast(0L)
-    val aggregateTotalMillis = manager.queryAndAggregateUsageStats(start, end).values.sumOf { it.totalTimeInForeground }
     val eventTotalMillis = eventTotalUsageForPeriod(manager, start, end)
-    return when {
-        aggregateTotalMillis in 1..elapsedMillis -> aggregateTotalMillis
-        eventTotalMillis > 0L -> eventTotalMillis
-        else -> 0L
-    }.coerceAtMost(elapsedMillis)
+    return eventTotalMillis.takeIf { it > 0L }
+        ?: aggregateTotalFallback(manager, start, end)
+        ?: 0L
 }
 
 private fun eventTotalUsageForPeriod(manager: UsageStatsManager, startMillis: Long, endMillis: Long): Long {
@@ -159,6 +156,20 @@ private fun eventTotalUsageForPeriod(manager: UsageStatsManager, startMillis: Lo
         totalMillis += (endMillis - activeStart).coerceAtLeast(0L)
     }
     return totalMillis.coerceAtMost((endMillis - startMillis).coerceAtLeast(0L))
+}
+
+private fun aggregateTotalFallback(manager: UsageStatsManager, startMillis: Long, endMillis: Long): Long? {
+    val periodDurationMillis = (endMillis - startMillis).coerceAtLeast(0L)
+    if (periodDurationMillis <= 0L) return null
+
+    val totalMillis = manager.queryAndAggregateUsageStats(startMillis, endMillis)
+        .values
+        .asSequence()
+        .map { it.totalTimeInForeground }
+        .filter { it in 1..periodDurationMillis }
+        .sum()
+
+    return totalMillis.takeIf { it in 1..periodDurationMillis }
 }
 
 @Suppress("DEPRECATION")
