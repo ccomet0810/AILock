@@ -22,17 +22,28 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -47,7 +58,13 @@ import com.ccomet.ailock.ui.components.SecondaryButton
 import com.ccomet.ailock.ui.components.StickyCollapsingScreenHeader
 import com.ccomet.ailock.ui.components.rememberAILockHeaderMotionState
 import com.ccomet.ailock.ui.theme.AILockLayout
+import com.ccomet.ailock.ui.theme.AILockShape
 import com.ccomet.ailock.ui.theme.AILockSpacing
+import com.ccomet.ailock.ui.theme.AppBorder
+import com.ccomet.ailock.ui.theme.AppSurface
+import com.ccomet.ailock.ui.theme.PandaOrange
+
+private const val CREATOR_PASSWORD = "0514"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,6 +78,10 @@ fun SettingsScreen(
     val headerDragState = rememberDraggableState { delta ->
         headerMotion.onDragDelta(delta)
     }
+    var showPasswordDialog by remember { mutableStateOf(false) }
+    var showCreatorDialog by remember { mutableStateOf(false) }
+    var passwordInput by remember { mutableStateOf("") }
+    var passwordError by remember { mutableStateOf(false) }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -101,12 +122,6 @@ fun SettingsScreen(
                             iconRes = R.drawable.ic_action_permissions,
                         )
                     }
-                    SecondaryButton(
-                        "온보딩 다시 보기",
-                        onClick = onRestartOnboarding,
-                        modifier = Modifier.fillMaxWidth(),
-                        iconRes = R.drawable.ic_action_onboarding_restart,
-                    )
                 }
             }
             StickyCollapsingScreenHeader(
@@ -114,9 +129,136 @@ fun SettingsScreen(
                 subtitle = "프로필과 권한을 관리할 수 있어요",
                 collapseFraction = headerMotion.collapseFraction,
                 modifier = Modifier.align(Alignment.TopCenter),
+                actions = {
+                    IconButton(
+                        onClick = {
+                            passwordInput = ""
+                            passwordError = false
+                            showPasswordDialog = true
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = "만든이",
+                            tint = PandaOrange,
+                        )
+                    }
+                },
             )
+            if (showPasswordDialog) {
+                CreatorPasswordDialog(
+                    password = passwordInput,
+                    hasError = passwordError,
+                    onPasswordChange = {
+                        passwordInput = it.filter(Char::isDigit).take(4)
+                        passwordError = false
+                    },
+                    onDismiss = {
+                        showPasswordDialog = false
+                        passwordInput = ""
+                        passwordError = false
+                    },
+                    onConfirm = {
+                        if (passwordInput == CREATOR_PASSWORD) {
+                            showPasswordDialog = false
+                            showCreatorDialog = true
+                            passwordInput = ""
+                            passwordError = false
+                        } else {
+                            passwordError = true
+                        }
+                    },
+                )
+            }
+            if (showCreatorDialog) {
+                CreatorInfoDialog(
+                    onDismiss = { showCreatorDialog = false },
+                    onRestartOnboarding = {
+                        showCreatorDialog = false
+                        onRestartOnboarding()
+                    },
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun CreatorPasswordDialog(
+    password: String,
+    hasError: Boolean,
+    onPasswordChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("비밀번호") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap)) {
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = onPasswordChange,
+                    label = { Text("비밀번호") },
+                    singleLine = true,
+                    isError = hasError,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    shape = AILockShape.control,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PandaOrange,
+                        unfocusedBorderColor = AppBorder,
+                        focusedContainerColor = AppSurface,
+                        unfocusedContainerColor = AppSurface,
+                    ),
+                )
+                if (hasError) {
+                    Text(
+                        text = "비밀번호가 맞지 않아요.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text("확인")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소")
+            }
+        },
+    )
+}
+
+@Composable
+private fun CreatorInfoDialog(
+    onDismiss: () -> Unit,
+    onRestartOnboarding: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("만든이") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap)) {
+                Text("ccomet0810", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("파일럿 버전에서는 온보딩 다시 보기를 임시로 남겨뒀어요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {
+            Button(onClick = onRestartOnboarding) {
+                Text("온보딩 다시 보기")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("닫기")
+            }
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
