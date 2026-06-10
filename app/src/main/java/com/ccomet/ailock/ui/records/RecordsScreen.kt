@@ -652,8 +652,18 @@ private fun loadUsageSnapshot(context: Context, range: HistoryRange, anchorDate:
         HistoryRange.Day -> hourlyUsage(manager, zone, startDate, end)
         HistoryRange.Week -> dayUsage(manager, zone, startDate, safeAnchor, end)
     }
-    val apps = appUsageForPeriod(packageManager, manager, start, end)
-    val totalMillis = apps.sumOf { it.totalTimeMillis }.takeIf { it > 0L } ?: bars.sumOf { it.totalTimeMillis }
+    val aggregateApps = appUsageForPeriod(packageManager, manager, start, end)
+    val aggregateTotalMillis = aggregateApps.sumOf { it.totalTimeMillis }
+    val eventApps = eventAppUsageForPeriod(packageManager, manager, start, end)
+    val eventTotalMillis = eventApps.sumOf { it.totalTimeMillis }
+    val periodDurationMillis = (end - start).coerceAtLeast(0L)
+    val aggregateLooksValid = aggregateTotalMillis in 1..periodDurationMillis
+    val apps = if (aggregateLooksValid || eventApps.isEmpty()) aggregateApps else eventApps
+    val totalMillis = when {
+        aggregateLooksValid -> aggregateTotalMillis
+        eventTotalMillis > 0L -> eventTotalMillis
+        else -> bars.sumOf { it.totalTimeMillis }.coerceAtMost(periodDurationMillis)
+    }
     return UsageSnapshot(bars = bars, apps = apps, totalMillis = totalMillis)
 }
 
@@ -731,9 +741,19 @@ private fun dayUsage(
         } else {
             date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
         }
+        val aggregateTotalMillis = manager.queryAndAggregateUsageStats(start, end)
+            .values
+            .sumOf { it.totalTimeInForeground }
+        val eventTotalMillis = eventTotalUsageForPeriod(manager, start, end)
+        val periodDurationMillis = (end - start).coerceAtLeast(0L)
+        val totalMillis = when {
+            aggregateTotalMillis in 1..periodDurationMillis -> aggregateTotalMillis
+            eventTotalMillis > 0L -> eventTotalMillis
+            else -> 0L
+        }
         UsageBar(
             label = "${date.monthValue}/${date.dayOfMonth}",
-            totalTimeMillis = manager.queryAndAggregateUsageStats(start, end).values.sumOf { it.totalTimeInForeground },
+            totalTimeMillis = totalMillis,
         )
     }
 
@@ -757,6 +777,96 @@ private fun appUsageForPeriod(
         }
         .sortedByDescending { it.totalTimeMillis }
         .toList()
+
+private fun eventAppUsageForPeriod(
+    packageManager: PackageManager,
+    manager: UsageStatsManager,
+    startMillis: Long,
+    endMillis: Long,
+): List<AppUsage> {
+    val totals = mutableMapOf<String, Long>()
+    val events = manager.queryEvents(startMillis, endMillis)
+    val event = UsageEvents.Event()
+    var activePackage: String? = null
+    var activeStart = startMillis
+
+    while (events.hasNextEvent()) {
+        events.getNextEvent(event)
+        val packageName = event.packageName ?: continue
+        val eventTime = event.timeStamp.coerceIn(startMillis, endMillis)
+        when (event.eventType) {
+            UsageEvents.Event.ACTIVITY_RESUMED,
+            usageMoveToForegroundEvent() -> {
+                activePackage?.let { addPackageUsage(totals, it, activeStart, eventTime) }
+                activePackage = packageName
+                activeStart = eventTime
+            }
+
+            UsageEvents.Event.ACTIVITY_PAUSED,
+            usageMoveToBackgroundEvent() -> {
+                if (activePackage == packageName) {
+                    addPackageUsage(totals, packageName, activeStart, eventTime)
+                    activePackage = null
+                    activeStart = eventTime
+                }
+            }
+        }
+    }
+    activePackage?.let { addPackageUsage(totals, it, activeStart, endMillis) }
+
+    return totals.asSequence()
+        .filter { (_, totalTimeMillis) -> totalTimeMillis > 0L }
+        .map { (packageName, totalTimeMillis) ->
+            AppUsage(
+                packageName = packageName,
+                appName = packageManager.safeLabel(packageName),
+                icon = packageManager.safeIcon(packageName),
+                totalTimeMillis = totalTimeMillis,
+            )
+        }
+        .sortedByDescending { it.totalTimeMillis }
+        .toList()
+}
+
+private fun eventTotalUsageForPeriod(manager: UsageStatsManager, startMillis: Long, endMillis: Long): Long {
+    val events = manager.queryEvents(startMillis, endMillis)
+    val event = UsageEvents.Event()
+    var totalMillis = 0L
+    var activePackage: String? = null
+    var activeStart = startMillis
+
+    while (events.hasNextEvent()) {
+        events.getNextEvent(event)
+        val packageName = event.packageName ?: continue
+        val eventTime = event.timeStamp.coerceIn(startMillis, endMillis)
+        when (event.eventType) {
+            UsageEvents.Event.ACTIVITY_RESUMED,
+            usageMoveToForegroundEvent() -> {
+                activePackage?.let { totalMillis += (eventTime - activeStart).coerceAtLeast(0L) }
+                activePackage = packageName
+                activeStart = eventTime
+            }
+
+            UsageEvents.Event.ACTIVITY_PAUSED,
+            usageMoveToBackgroundEvent() -> {
+                if (activePackage == packageName) {
+                    totalMillis += (eventTime - activeStart).coerceAtLeast(0L)
+                    activePackage = null
+                    activeStart = eventTime
+                }
+            }
+        }
+    }
+    if (activePackage != null) {
+        totalMillis += (endMillis - activeStart).coerceAtLeast(0L)
+    }
+    return totalMillis.coerceAtMost((endMillis - startMillis).coerceAtLeast(0L))
+}
+
+private fun addPackageUsage(totals: MutableMap<String, Long>, packageName: String, startMillis: Long, endMillis: Long) {
+    if (endMillis <= startMillis) return
+    totals[packageName] = (totals[packageName] ?: 0L) + (endMillis - startMillis)
+}
 
 private fun buildRecordSummary(
     records: List<UsageRecord>,
