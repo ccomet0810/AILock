@@ -5,15 +5,15 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,12 +27,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,14 +39,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +54,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -66,7 +65,13 @@ import com.ccomet.ailock.data.model.InstalledAppInfo
 import com.ccomet.ailock.data.model.UsageEventType
 import com.ccomet.ailock.data.model.UsageRecord
 import com.ccomet.ailock.ui.AILockUiState
+import com.ccomet.ailock.ui.components.AilockCard
+import com.ccomet.ailock.ui.components.AilockSegmentedControl
 import com.ccomet.ailock.ui.components.InstalledAppIcon
+import com.ccomet.ailock.ui.components.SectionTitle
+import com.ccomet.ailock.ui.components.StickyCollapsingScreenHeader
+import com.ccomet.ailock.ui.components.rememberAILockHeaderMotionState
+import com.ccomet.ailock.ui.components.rememberAILockHeaderNestedScrollConnection
 import com.ccomet.ailock.ui.theme.AppBorder
 import com.ccomet.ailock.ui.theme.AppSurface
 import com.ccomet.ailock.ui.theme.AppSurfaceMuted
@@ -74,6 +79,8 @@ import com.ccomet.ailock.ui.theme.AppTextStrong
 import com.ccomet.ailock.ui.theme.AppTextSubtle
 import com.ccomet.ailock.ui.theme.PandaOrange
 import com.ccomet.ailock.ui.theme.AILockShape
+import com.ccomet.ailock.ui.theme.AILockLayout
+import com.ccomet.ailock.ui.theme.AILockSpacing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -81,6 +88,8 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+
+private val PeriodNavigatorHeight = AILockLayout.collapsedHeaderHeight
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -90,17 +99,25 @@ fun RecordsScreen(uiState: AILockUiState) {
     var anchorDate by remember { mutableStateOf(LocalDate.now()) }
     var bars by remember { mutableStateOf<List<UsageBar>>(emptyList()) }
     var appUsage by remember { mutableStateOf<List<AppUsage>>(emptyList()) }
+    var loadedSnapshotKey by remember { mutableStateOf<Pair<HistoryRange, LocalDate>?>(null) }
+    val listState = rememberLazyListState()
+    val headerMotion = rememberAILockHeaderMotionState(label = "recordsHeaderMotion")
+    val headerNestedScrollConnection = rememberAILockHeaderNestedScrollConnection(headerMotion, listState)
     val earliestRecordDate = remember(uiState.usageRecords) {
         uiState.usageRecords.minOfOrNull {
             Instant.ofEpochMilli(it.openedAt).atZone(ZoneId.systemDefault()).toLocalDate()
         } ?: LocalDate.now()
     }
 
-    val summary = remember(uiState.usageRecords, selectedRange, anchorDate, appUsage, bars) {
+    val displayedRange = loadedSnapshotKey?.first ?: selectedRange
+    val displayedAnchorDate = loadedSnapshotKey?.second ?: anchorDate
+    val hasDisplayedSnapshot = loadedSnapshotKey != null
+
+    val summary = remember(uiState.usageRecords, displayedRange, displayedAnchorDate, appUsage, bars) {
         buildRecordSummary(
             records = uiState.usageRecords,
-            range = selectedRange,
-            anchorDate = anchorDate,
+            range = displayedRange,
+            anchorDate = displayedAnchorDate,
             totalMillis = bars.sumOf { it.totalTimeMillis },
             topAppName = appUsage.firstOrNull()?.appName ?: "없음",
         )
@@ -108,134 +125,132 @@ fun RecordsScreen(uiState: AILockUiState) {
 
     LaunchedEffect(uiState.permissions.hasUsageAccess, selectedRange, anchorDate) {
         if (uiState.permissions.hasUsageAccess) {
+            val snapshotKey = selectedRange to anchorDate
             val snapshot = withContext(Dispatchers.IO) {
                 loadUsageSnapshot(context, selectedRange, anchorDate)
             }
             bars = snapshot.bars
             appUsage = snapshot.apps
+            loadedSnapshotKey = snapshotKey
         } else {
             bars = emptyList()
             appUsage = emptyList()
+            loadedSnapshotKey = null
         }
     }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "기록",
-                        modifier = Modifier.padding(start = 4.dp),
-                        fontWeight = FontWeight.Bold,
-                    )
-                },
-                actions = {
-                    RangeSwitcher(
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(headerNestedScrollConnection),
+                flingBehavior = ScrollableDefaults.flingBehavior(),
+                verticalArrangement = Arrangement.spacedBy(AILockSpacing.sectionGap),
+                contentPadding = PaddingValues(bottom = AILockLayout.scrollContentBottomPadding),
+            ) {
+                item {
+                    val fixedTopContentHeight = if (uiState.permissions.hasUsageAccess) {
+                        PeriodNavigatorHeight
+                    } else {
+                        0.dp
+                    }
+                    Spacer(modifier = Modifier.height(headerMotion.currentHeaderHeight + fixedTopContentHeight))
+                }
+                if (!uiState.permissions.hasUsageAccess) {
+                    item {
+                        EmptyStateCard(
+                            title = "사용 기록 접근이 필요해요",
+                            body = "앱 사용량과 시간대별 기록을 보려면 사용 기록 접근을 허용해 주세요.",
+                            modifier = Modifier.padding(horizontal = AILockSpacing.screenHorizontal),
+                        )
+                    }
+                } else {
+                    item {
+                        Column(modifier = Modifier.padding(horizontal = AILockSpacing.screenHorizontal)) {
+                            SummaryCarousel(summary)
+                        }
+                    }
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .padding(horizontal = AILockSpacing.screenHorizontal)
+                                .padding(top = 6.dp),
+                        ) {
+                            SectionTitle(title = "그래프")
+                            UsageBarGraph(
+                                bars = bars,
+                                selectedRange = displayedRange,
+                                anchorDate = displayedAnchorDate,
+                                isLoaded = hasDisplayedSnapshot,
+                            )
+                        }
+                    }
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .padding(horizontal = AILockSpacing.screenHorizontal)
+                                .padding(top = 6.dp),
+                        ) {
+                            SectionTitle(title = "앱별 사용 시간")
+                            AppUsageList(items = appUsage)
+                        }
+                    }
+                }
+            }
+            if (uiState.permissions.hasUsageAccess) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = headerMotion.currentHeaderHeight)
+                        .height(PeriodNavigatorHeight)
+                        .background(MaterialTheme.colorScheme.background),
+                ) {
+                    PeriodNavigator(
                         selectedRange = selectedRange,
-                        onRangeSelected = {
+                        anchorDate = anchorDate,
+                        earliestDate = earliestRecordDate,
+                        onMove = { delta ->
+                            anchorDate = when (selectedRange) {
+                                HistoryRange.Day -> anchorDate.plusDays(delta.toLong())
+                                HistoryRange.Week -> anchorDate.plusDays((delta * 7).toLong())
+                            }.coerceInDates(earliestRecordDate, LocalDate.now())
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = AILockSpacing.screenHorizontal),
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = AILockSpacing.screenHorizontal),
+                        color = AppBorder.copy(alpha = headerMotion.collapseFraction),
+                    )
+                }
+            }
+            StickyCollapsingScreenHeader(
+                title = "기록",
+                subtitle = "1일, 7일 선택하여 볼 수 있어요",
+                collapseFraction = headerMotion.collapseFraction,
+                modifier = Modifier.align(Alignment.TopCenter),
+                actions = {
+                    AilockSegmentedControl(
+                        options = HistoryRange.entries,
+                        selectedOption = selectedRange,
+                        onOptionSelected = {
                             selectedRange = it
                             anchorDate = anchorDate.coerceAtMost(LocalDate.now())
                         },
+                        label = { it.label },
                     )
-                    Spacer(Modifier.width(16.dp))
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-            )
-        },
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-            contentPadding = PaddingValues(bottom = 120.dp),
-        ) {
-            if (!uiState.permissions.hasUsageAccess) {
-                item {
-                    EmptyStateCard(
-                        title = "사용 기록 접근이 필요해요",
-                        body = "앱 사용량과 시간대별 기록을 보려면 사용 기록 접근을 허용해 주세요.",
-                    )
-                }
-            } else {
-                stickyHeader {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.background)
-                            .padding(top = 2.dp, bottom = 10.dp),
-                    ) {
-                        PeriodNavigator(
-                            selectedRange = selectedRange,
-                            anchorDate = anchorDate,
-                            earliestDate = earliestRecordDate,
-                            onMove = { delta ->
-                                anchorDate = when (selectedRange) {
-                                    HistoryRange.Day -> anchorDate.plusDays(delta.toLong())
-                                    HistoryRange.Week -> anchorDate.plusDays((delta * 7).toLong())
-                                }.coerceInDates(earliestRecordDate, LocalDate.now())
-                            },
-                        )
-                    }
-                }
-                item {
-                    SectionHeader(title = "한눈에 보기")
-                    SummaryCarousel(summary)
-                }
-                item {
-                    SectionHeader(title = "그래프")
-                    UsageBarGraph(bars = bars)
-                }
-                item {
-                    SectionHeader(title = "앱별 사용 시간")
-                    AppUsageList(items = appUsage)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SectionHeader(
-    title: String,
-    trailing: @Composable (() -> Unit)? = null,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = AppTextStrong,
-        )
-        trailing?.invoke()
-    }
-}
-
-@Composable
-private fun RangeSwitcher(
-    selectedRange: HistoryRange,
-    onRangeSelected: (HistoryRange) -> Unit,
-) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        HistoryRange.entries.forEach { range ->
-            val selected = range == selectedRange
-            Text(
-                text = range.label,
-                modifier = Modifier.clickable { onRangeSelected(range) },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                color = if (selected) AppTextStrong else AppTextSubtle.copy(alpha = 0.58f),
             )
         }
     }
@@ -247,6 +262,7 @@ private fun PeriodNavigator(
     anchorDate: LocalDate,
     earliestDate: LocalDate,
     onMove: (Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val previousAnchor = when (selectedRange) {
         HistoryRange.Day -> anchorDate.minusDays(1)
@@ -255,7 +271,7 @@ private fun PeriodNavigator(
     val canMovePrevious = !previousAnchor.isBefore(earliestDate)
     val canMoveNext = anchorDate < LocalDate.now()
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -295,7 +311,7 @@ private fun PeriodNavigator(
 @Composable
 private fun SummaryCarousel(summary: RecordSummary) {
     LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(AILockSpacing.iconTextGap),
         contentPadding = PaddingValues(0.dp),
     ) {
         item {
@@ -356,26 +372,44 @@ private fun SummaryMetricCard(label: String, value: String) {
 }
 
 @Composable
-private fun UsageBarGraph(bars: List<UsageBar>) {
-    val actualMaxUsage = bars.maxOfOrNull { it.totalTimeMillis }?.coerceAtLeast(1L) ?: 1L
+private fun UsageBarGraph(
+    bars: List<UsageBar>,
+    selectedRange: HistoryRange,
+    anchorDate: LocalDate,
+    isLoaded: Boolean,
+) {
+    val graphBars = remember(bars, selectedRange, anchorDate) {
+        bars.ifEmpty { selectedRange.emptyUsageBars(anchorDate) }
+    }
+    val actualMaxUsage = graphBars.maxOfOrNull { it.totalTimeMillis }?.coerceAtLeast(1L) ?: 1L
     val axisMaxUsage = niceGraphAxisMaxMillis(actualMaxUsage)
-    val isHourly = bars.size == 24
+    val isHourly = selectedRange == HistoryRange.Day
+    val animationKey = Triple(selectedRange, anchorDate, if (isLoaded) bars.sumOf { it.totalTimeMillis } else -1L)
+    val revealProgress = remember { Animatable(0f) }
+    LaunchedEffect(animationKey) {
+        revealProgress.snapTo(0f)
+        if (!isLoaded) return@LaunchedEffect
+        withFrameNanos { }
+        revealProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
+        )
+    }
 
     RecordCard(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp)) {
-        if (bars.isEmpty()) {
-            Text(
-                text = "표시할 사용량이 없어요",
-                style = MaterialTheme.typography.bodyMedium,
-                color = AppTextSubtle,
-            )
-        } else {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             UsageGraphCanvas(
-                bars = bars,
+                bars = graphBars,
                 axisMaxUsage = axisMaxUsage,
                 isHourly = isHourly,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp),
+                showAxisLabels = isLoaded,
+                revealProgress = revealProgress.value,
+                modifier = Modifier.matchParentSize(),
             )
         }
     }
@@ -386,6 +420,8 @@ private fun UsageGraphCanvas(
     bars: List<UsageBar>,
     axisMaxUsage: Long,
     isHourly: Boolean,
+    showAxisLabels: Boolean,
+    revealProgress: Float,
     modifier: Modifier = Modifier,
 ) {
     val axisColor = AppBorder
@@ -401,6 +437,7 @@ private fun UsageGraphCanvas(
             bar.label to index
         }
     }
+    val animatedProgress = revealProgress.coerceIn(0f, 1f)
 
     Canvas(modifier = modifier) {
         val left = 10.dp.toPx()
@@ -423,55 +460,53 @@ private fun UsageGraphCanvas(
         val graphHeight = bottom - top
         val slotWidth = (right - left) / bars.size.coerceAtLeast(1)
 
-        drawContext.canvas.nativeCanvas.apply {
-            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                color = labelColor.toArgb()
-                textSize = 11.sp.toPx()
-                textAlign = android.graphics.Paint.Align.LEFT
-            }
-            drawText(topLabel, right + 9.dp.toPx(), top + 5.dp.toPx(), paint)
-            drawText(middleLabel, right + 9.dp.toPx(), middle + 5.dp.toPx(), paint)
-
-            val bottomPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                color = labelColor.toArgb()
-                textSize = 12.sp.toPx()
-                textAlign = android.graphics.Paint.Align.CENTER
-            }
-            bottomLabels.forEach { (label, index) ->
-                val x = if (isHourly && index == 24) {
-                    right
-                } else {
-                    left + slotWidth * index.coerceAtMost((bars.size - 1).coerceAtLeast(0)) + slotWidth / 2f
+        if (showAxisLabels) {
+            drawContext.canvas.nativeCanvas.apply {
+                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    color = labelColor.toArgb()
+                    textSize = 11.sp.toPx()
+                    textAlign = android.graphics.Paint.Align.LEFT
                 }
-                drawText(label, x, size.height - 5.dp.toPx(), bottomPaint)
+                drawText(topLabel, right + 9.dp.toPx(), top + 5.dp.toPx(), paint)
+                drawText(middleLabel, right + 9.dp.toPx(), middle + 5.dp.toPx(), paint)
+
+                val bottomPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    color = labelColor.toArgb()
+                    textSize = 12.sp.toPx()
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+                bottomLabels.forEach { (label, index) ->
+                    val x = if (isHourly && index == 24) {
+                        right
+                    } else {
+                        left + slotWidth * index.coerceAtMost((bars.size - 1).coerceAtLeast(0)) + slotWidth / 2f
+                    }
+                    drawText(label, x, size.height - 5.dp.toPx(), bottomPaint)
+                }
             }
         }
 
         val barWidth = if (isHourly) 7.dp.toPx() else slotWidth.coerceAtMost(16.dp.toPx())
+        val barCornerRadius = 3.dp.toPx()
         bars.forEachIndexed { index, bar ->
             val ratio = (bar.totalTimeMillis.toFloat() / axisMaxUsage.toFloat()).coerceIn(0f, 1f)
-            val barHeight = if (bar.totalTimeMillis > 0L) {
-                (graphHeight * ratio).coerceAtLeast(barWidth + 4.dp.toPx())
+            val targetBarHeight = if (bar.totalTimeMillis > 0L) {
+                (graphHeight * ratio).coerceAtLeast(barCornerRadius * 2f + 1.dp.toPx())
             } else {
                 0f
             }
+            val barHeight = targetBarHeight * animatedProgress
             val centerX = left + slotWidth * index + slotWidth / 2f
             val barLeft = centerX - barWidth / 2f
             val barTop = bottom - barHeight
             val color = if (bar.totalTimeMillis > 0L) barColor else emptyColor
 
-            if (barHeight > 0f) {
-                val capRadius = barWidth / 2f
-                drawRect(
-                    color = color,
-                    topLeft = Offset(barLeft, barTop + capRadius),
-                    size = Size(barWidth, (barHeight - capRadius).coerceAtLeast(1f)),
-                )
+            if (barHeight >= 1f) {
                 drawRoundRect(
                     color = color,
                     topLeft = Offset(barLeft, barTop),
-                    size = Size(barWidth, barWidth),
-                    cornerRadius = CornerRadius(capRadius, capRadius),
+                    size = Size(barWidth, barHeight),
+                    cornerRadius = CornerRadius(barCornerRadius, barCornerRadius),
                 )
             }
         }
@@ -481,6 +516,7 @@ private fun UsageGraphCanvas(
 @Composable
 private fun AppUsageList(items: List<AppUsage>) {
     val maxUsage = items.maxOfOrNull { it.totalTimeMillis }?.coerceAtLeast(1L) ?: 1L
+    val visibleItems = items.take(8)
 
     if (items.isEmpty()) {
         RecordCard {
@@ -491,16 +527,11 @@ private fun AppUsageList(items: List<AppUsage>) {
             )
         }
     } else {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp),
-            colors = CardDefaults.cardColors(containerColor = AppSurface),
-            border = BorderStroke(1.dp, AppBorder),
-        ) {
+        AilockCard(contentPadding = PaddingValues(0.dp)) {
             Column {
-                items.take(8).forEachIndexed { index, item ->
+                visibleItems.forEachIndexed { index, item ->
                     AppUsageRow(item = item, progress = item.totalTimeMillis.toFloat() / maxUsage)
-                    if (index != items.take(8).lastIndex) {
+                    if (index != visibleItems.lastIndex) {
                         HorizontalDivider(color = AppBorder)
                     }
                 }
@@ -512,9 +543,9 @@ private fun AppUsageList(items: List<AppUsage>) {
 @Composable
 private fun AppUsageRow(item: AppUsage, progress: Float) {
     Row(
-        modifier = Modifier.padding(14.dp),
+        modifier = Modifier.padding(AILockSpacing.itemPadding),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(AILockSpacing.iconTextGap),
     ) {
         InstalledAppIcon(
             app = InstalledAppInfo(
@@ -538,7 +569,7 @@ private fun AppUsageRow(item: AppUsage, progress: Float) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(AILockSpacing.buttonIconGap))
                 Text(
                     text = formatUsageTime(item.totalTimeMillis),
                     style = MaterialTheme.typography.labelMedium,
@@ -549,14 +580,14 @@ private fun AppUsageRow(item: AppUsage, progress: Float) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(10.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(AILockShape.graphBar)
                     .background(AppSurfaceMuted),
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(progress.coerceIn(0f, 1f))
                         .height(10.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(AILockShape.graphBar)
                         .background(PandaOrange),
                 )
             }
@@ -565,8 +596,8 @@ private fun AppUsageRow(item: AppUsage, progress: Float) {
 }
 
 @Composable
-private fun EmptyStateCard(title: String, body: String) {
-    RecordCard {
+private fun EmptyStateCard(title: String, body: String, modifier: Modifier = Modifier) {
+    RecordCard(modifier = modifier) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
@@ -583,21 +614,16 @@ private fun EmptyStateCard(title: String, body: String) {
 
 @Composable
 private fun RecordCard(
-    contentPadding: PaddingValues = PaddingValues(16.dp),
-    content: @Composable ColumnScope.() -> Unit,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(AILockSpacing.cardPadding),
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = AppSurface),
-        border = BorderStroke(1.dp, AppBorder),
-    ) {
-        Column(
-            modifier = Modifier.padding(contentPadding),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            content = content,
-        )
-    }
+    AilockCard(
+        modifier = modifier,
+        contentPadding = contentPadding,
+        verticalArrangement = Arrangement.spacedBy(AILockSpacing.iconTextGap),
+        content = content,
+    )
 }
 
 private fun loadUsageSnapshot(context: Context, range: HistoryRange, anchorDate: LocalDate): UsageSnapshot {
@@ -799,6 +825,18 @@ private fun compactGraphAxisLabel(totalTimeMillis: Long): String {
     val minutes = (totalTimeMillis / 60_000L).coerceAtLeast(0)
     return if (minutes >= 60L) "${minutes / 60L}시간" else "${minutes}분"
 }
+
+private fun HistoryRange.emptyUsageBars(anchorDate: LocalDate): List<UsageBar> =
+    when (this) {
+        HistoryRange.Day -> (0..23).map { hour ->
+            UsageBar(label = hour.toString().padStart(2, '0'), totalTimeMillis = 0L)
+        }
+
+        HistoryRange.Week -> (0..6).map { offset ->
+            val date = anchorDate.minusDays(6).plusDays(offset.toLong())
+            UsageBar(label = "${date.monthValue}/${date.dayOfMonth}", totalTimeMillis = 0L)
+        }
+    }
 
 private fun LocalDate.coerceAtMost(maximum: LocalDate): LocalDate =
     if (isAfter(maximum)) maximum else this

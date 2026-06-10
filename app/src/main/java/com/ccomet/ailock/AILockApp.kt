@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -22,6 +23,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +53,11 @@ import com.ccomet.ailock.ui.settings.PermissionManagementScreen
 import com.ccomet.ailock.ui.settings.ProfileEditScreen
 import com.ccomet.ailock.ui.settings.SettingsScreen
 import com.ccomet.ailock.ui.theme.AppBackground
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+private const val BottomBarAnimationMillis = 150
+private const val NavigateAfterBottomBarHideMillis = 90L
 
 @Composable
 fun AILockApp(
@@ -64,6 +71,7 @@ fun AILockApp(
     val currentRoute = backStack?.destination?.route
     var bottomNavHidden by remember { mutableStateOf(false) }
     var appPickerAfterAdd by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -82,10 +90,6 @@ fun AILockApp(
         viewModel.refreshPermissions()
     }
 
-    LaunchedEffect(currentRoute) {
-        if (currentRoute != Routes.RESTRICTIONS) bottomNavHidden = false
-    }
-
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -97,6 +101,20 @@ fun AILockApp(
     }
 
     val mainRoutes = setOf(Routes.HOME, Routes.RECORDS, Routes.RESTRICTIONS, Routes.SETTINGS)
+    fun navigateAfterBottomBarHide(block: () -> Unit) {
+        bottomNavHidden = true
+        scope.launch {
+            delay(NavigateAfterBottomBarHideMillis)
+            block()
+        }
+    }
+
+    LaunchedEffect(currentRoute) {
+        if (currentRoute in mainRoutes && currentRoute != Routes.RESTRICTIONS) {
+            bottomNavHidden = false
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
@@ -142,13 +160,17 @@ fun AILockApp(
                     uiState = uiState,
                     onDeleteModeChange = { bottomNavHidden = it },
                     onAdd = {
-                        viewModel.beginAddRestriction()
-                        appPickerAfterAdd = true
-                        navController.navigate(Routes.APP_PICKER)
+                        navigateAfterBottomBarHide {
+                            viewModel.beginAddRestriction()
+                            appPickerAfterAdd = true
+                            navController.navigate(Routes.APP_PICKER)
+                        }
                     },
                     onEdit = { id ->
-                        viewModel.beginEditRestriction(id)
-                        navController.navigate("${Routes.RESTRICTION_EDIT}/$id")
+                        navigateAfterBottomBarHide {
+                            viewModel.beginEditRestriction(id)
+                            navController.navigate("${Routes.RESTRICTION_EDIT}/$id")
+                        }
                     },
                     onDeleteApp = viewModel::deleteLockedApp,
                 )
@@ -157,14 +179,22 @@ fun AILockApp(
                 SettingsScreen(
                     uiState = uiState,
                     onProfile = {
-                        viewModel.startProfileEditing()
-                        navController.navigate(Routes.PROFILE)
+                        navigateAfterBottomBarHide {
+                            viewModel.startProfileEditing()
+                            navController.navigate(Routes.PROFILE)
+                        }
                     },
-                    onPermissions = { navController.navigate(Routes.PERMISSIONS) },
+                    onPermissions = {
+                        navigateAfterBottomBarHide {
+                            navController.navigate(Routes.PERMISSIONS)
+                        }
+                    },
                     onRestartOnboarding = {
-                        viewModel.restartOnboarding()
-                        navController.navigate(Routes.ONBOARDING) {
-                            popUpTo(Routes.HOME) { inclusive = true }
+                        navigateAfterBottomBarHide {
+                            viewModel.restartOnboarding()
+                            navController.navigate(Routes.ONBOARDING) {
+                                popUpTo(Routes.HOME) { inclusive = true }
+                            }
                         }
                     },
                 )
@@ -239,8 +269,14 @@ fun AILockApp(
         if (currentRoute in mainRoutes) {
             AnimatedVisibility(
                 visible = !bottomNavHidden,
-                enter = slideInVertically { it },
-                exit = slideOutVertically { it },
+                enter = slideInVertically(
+                    animationSpec = tween(BottomBarAnimationMillis),
+                    initialOffsetY = { it },
+                ),
+                exit = slideOutVertically(
+                    animationSpec = tween(BottomBarAnimationMillis),
+                    targetOffsetY = { it },
+                ),
                 modifier = Modifier.align(Alignment.BottomCenter),
             ) {
                 Box {

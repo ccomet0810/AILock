@@ -1,7 +1,10 @@
 package com.ccomet.ailock.ui.settings
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -15,38 +18,36 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.ccomet.ailock.R
 import com.ccomet.ailock.data.model.UserProfile
 import com.ccomet.ailock.ui.AILockUiState
+import com.ccomet.ailock.ui.components.AilockCard
+import com.ccomet.ailock.ui.components.AilockOutlinedTextField
+import com.ccomet.ailock.ui.components.FloatingBottomActionButton
 import com.ccomet.ailock.ui.components.PermissionCards
-import com.ccomet.ailock.ui.components.PrimaryButton
 import com.ccomet.ailock.ui.components.SecondaryButton
-import com.ccomet.ailock.ui.theme.AppBorder
-import com.ccomet.ailock.ui.theme.AppSurface
+import com.ccomet.ailock.ui.components.StickyCollapsingScreenHeader
+import com.ccomet.ailock.ui.components.rememberAILockHeaderMotionState
+import com.ccomet.ailock.ui.theme.AILockLayout
+import com.ccomet.ailock.ui.theme.AILockSpacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,38 +57,64 @@ fun SettingsScreen(
     onPermissions: () -> Unit,
     onRestartOnboarding: () -> Unit,
 ) {
+    val headerMotion = rememberAILockHeaderMotionState(label = "settingsHeaderMotion")
+    val headerDragState = rememberDraggableState { delta ->
+        headerMotion.onDragDelta(delta)
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
-        topBar = {
-            TopAppBar(
-                title = { Text("설정", modifier = Modifier.padding(start = 4.dp), fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-            )
-        },
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .draggable(
+                    state = headerDragState,
+                    orientation = Orientation.Vertical,
+                    onDragStopped = { velocity ->
+                        headerMotion.settleAfterDrag(velocity)
+                    },
+                ),
         ) {
-            SettingsCard {
-                Text(uiState.userProfile.name.ifBlank { "이름을 입력해줘" }, style = MaterialTheme.typography.titleLarge)
-                Text("AILock 사용자 정보", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    SecondaryButton("개인정보 수정", onClick = onProfile, modifier = Modifier.weight(1f), icon = Icons.Default.Person)
-                    SecondaryButton("권한 관리", onClick = onPermissions, modifier = Modifier.weight(1f), icon = Icons.Default.Settings)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = AILockSpacing.screenHorizontal),
+                verticalArrangement = Arrangement.spacedBy(AILockSpacing.listGap),
+            ) {
+                Spacer(modifier = Modifier.height(headerMotion.currentHeaderHeight))
+                SettingsCard {
+                    Text(uiState.userProfile.name.ifBlank { "이름을 입력해줘" }, style = MaterialTheme.typography.titleLarge)
+                    Text("AILock 사용자 정보", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap), modifier = Modifier.fillMaxWidth()) {
+                        SecondaryButton(
+                            "개인정보 수정",
+                            onClick = onProfile,
+                            modifier = Modifier.weight(1f),
+                            iconRes = R.drawable.ic_action_profile,
+                        )
+                        SecondaryButton(
+                            "권한 관리",
+                            onClick = onPermissions,
+                            modifier = Modifier.weight(1f),
+                            iconRes = R.drawable.ic_action_permissions,
+                        )
+                    }
+                    SecondaryButton(
+                        "온보딩 다시 보기",
+                        onClick = onRestartOnboarding,
+                        modifier = Modifier.fillMaxWidth(),
+                        iconRes = R.drawable.ic_action_onboarding_restart,
+                    )
                 }
-                SecondaryButton(
-                    "온보딩 다시 보기",
-                    onClick = onRestartOnboarding,
-                    modifier = Modifier.fillMaxWidth(),
-                    icon = Icons.Default.Refresh,
-                )
             }
-            Spacer(Modifier.height(100.dp))
+            StickyCollapsingScreenHeader(
+                title = "설정",
+                subtitle = "프로필과 권한을 관리할 수 있어요",
+                collapseFraction = headerMotion.collapseFraction,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
     }
 }
@@ -115,46 +142,52 @@ fun ProfileEditScreen(
             )
         },
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .consumeWindowInsets(innerPadding)
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(innerPadding),
         ) {
-            OutlinedTextField(
-                value = profile.name,
-                onValueChange = { onProfileChange(profile.copy(name = it)) },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("이름") },
-                singleLine = true,
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .consumeWindowInsets(innerPadding)
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = AILockSpacing.screenHorizontal)
+                    .padding(top = AILockSpacing.sectionGap, bottom = AILockLayout.scrollContentBottomPadding),
+                verticalArrangement = Arrangement.spacedBy(AILockSpacing.iconTextGap),
+            ) {
+                AilockOutlinedTextField(
+                    value = profile.name,
+                    onValueChange = { onProfileChange(profile.copy(name = it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = "이름",
+                )
+                AilockOutlinedTextField(
+                    value = profile.age?.toString().orEmpty(),
+                    onValueChange = { onProfileChange(profile.copy(age = it.toIntOrNull())) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = "나이",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                AilockOutlinedTextField(
+                    value = profile.gender,
+                    onValueChange = { onProfileChange(profile.copy(gender = it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = "성별",
+                )
+                AilockOutlinedTextField(
+                    value = profile.job,
+                    onValueChange = { onProfileChange(profile.copy(job = it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = "직업",
+                )
+            }
+            FloatingBottomActionButton(
+                text = "저장",
+                onClick = onSave,
+                modifier = Modifier.align(Alignment.BottomCenter),
             )
-            OutlinedTextField(
-                value = profile.age?.toString().orEmpty(),
-                onValueChange = { onProfileChange(profile.copy(age = it.toIntOrNull())) },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("나이") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
-            )
-            OutlinedTextField(
-                value = profile.gender,
-                onValueChange = { onProfileChange(profile.copy(gender = it)) },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("성별") },
-                singleLine = true,
-            )
-            OutlinedTextField(
-                value = profile.job,
-                onValueChange = { onProfileChange(profile.copy(job = it)) },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("직업") },
-                singleLine = true,
-            )
-            PrimaryButton("저장", onClick = onSave, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -185,42 +218,48 @@ fun PermissionManagementScreen(
             )
         },
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .padding(innerPadding),
         ) {
-            PermissionCards(
-                permissionState = uiState.permissions,
-                onUsage = onUsagePermission,
-                onOverlay = onOverlayPermission,
-                onAccessibility = onAccessibilityPermission,
-                onNotification = onNotificationPermission,
-                onBattery = onBatteryPermission,
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = AILockSpacing.screenHorizontal)
+                    .padding(top = AILockSpacing.sectionGap)
+                    .padding(bottom = AILockLayout.scrollContentBottomPadding),
+                verticalArrangement = Arrangement.spacedBy(AILockSpacing.listGap),
+            ) {
+                PermissionCards(
+                    permissionState = uiState.permissions,
+                    onUsage = onUsagePermission,
+                    onOverlay = onOverlayPermission,
+                    onAccessibility = onAccessibilityPermission,
+                    onNotification = onNotificationPermission,
+                    onBattery = onBatteryPermission,
+                )
+            }
+            FloatingBottomActionButton(
+                text = "권한 상태 새로고침",
+                onClick = onRefresh,
+                modifier = Modifier.align(Alignment.BottomCenter),
             )
-            PrimaryButton("권한 상태 새로고침", onClick = onRefresh, modifier = Modifier.fillMaxWidth())
         }
     }
 }
 
 @Composable
-private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = AppSurface),
-        border = BorderStroke(1.dp, AppBorder),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            content = content,
-        )
-    }
+private fun SettingsCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    AilockCard(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap),
+        content = content,
+    )
 }
 
 

@@ -1,37 +1,80 @@
 # AILock Design System
 
-## Tone
-
-AILock은 레서판다 캐릭터가 사용자를 혼내기보다 붙잡아주는 앱이다. 화면은 장난스럽게 꾸미기보다 조용하고 단단하게 구성하고, 강조가 필요한 순간에만 레서판다 주황을 쓴다.
+AILock UI는 조용하고 일관된 도구형 앱을 기준으로 설계한다. 캐릭터와 주황 포인트는 친근함을 만들 때만 쓰고, 기본 화면은 반복 사용과 빠른 탐색을 방해하지 않게 구성한다.
 
 ## Color
 
-- Background: 따뜻한 아이보리 `AppBackground`
-- Surface: 카드와 입력 영역의 흰색 `AppSurface`
-- Muted Surface: 선택 상태, 약한 채움, 팝업 바탕 `AppSurfaceMuted`
-- Primary: 레서판다 주황 `PandaOrange`
-- Primary Text: 거의 검정에 가까운 갈색 `AppTextStrong`
-- Subtle Text: 보조 설명용 갈색 회색 `AppTextSubtle`
-- Border: 크림 섞인 회색 `AppBorder`
+- Background: `AppBackground` (`#FFFBF5`)
+- Surface: `AppSurface` (`#FFFFFF`)
+- Muted surface: `AppSurfaceMuted` (`#FFF2E3`)
+- Pressed surface: `AppSurfacePressed` (`#FFE4C6`)
+- Primary: `PandaOrange` (`#F26F12`)
+- Primary text: `AppTextStrong`
+- Body text: `AppText`
+- Secondary text: `AppTextSubtle`
+- Border: `AppBorder`
+- Strong border: `AppBorderStrong`
 
 ## Shape
 
-- 카드, 버튼, 입력창, 네비게이션은 기본 8dp radius를 사용한다.
-- 하단 즉시개입 패널처럼 화면 가장자리에 붙는 큰 패널만 별도 radius를 허용한다.
-- 그림자는 사용하지 않고, 선과 배경색 차이로 레이어를 구분한다.
+- Default card radius: `8dp`
+- Default control radius: `8dp`
+- Graph bar radius: `3dp`
+- Default pill radius: `8dp`
+- Bottom sheet top radius: `8dp`, bottom corners `0dp`
+- Do not introduce large decorative radii unless the surface is a true modal or illustration container.
+- Inner rounded elements should use a smaller radius than the outer container. As a rule, `inner radius = outer radius - inset`.
+
+## Stroke
+
+- Default border width: `1dp`
+- Dividers use `HorizontalDivider` with `AppBorder`.
+- Strong borders are reserved for floating navigation, compact segmented controls, and active selection controls.
+- Header divider may fade in during collapse, but its thickness remains `1dp`.
 
 ## Spacing
 
-- 화면 좌우 기본 여백: 20dp
-- 섹션 간격: 18dp
-- 카드 내부 여백: 16dp
-- 리스트 아이템 내부 여백: 14dp
+- Screen horizontal padding: `20dp`
+- Section gap: `18dp`
+- Content vertical padding: `16dp`
+- List gap: `14dp`
+- Compact gap: `10dp`
+- Card content padding: `16dp`
+- List row padding: `14dp`
+- Icon/text gap: `12dp`
+- Button icon gap: `8dp`
+- Button content horizontal padding: `18dp`
+- Bottom chrome top padding: `8dp`
+
+## Layout
+
+- Expanded collapsing header height: `168dp`
+- Collapsed header height: `64dp`
+- Bottom navigation height: `64dp`
+- Bottom action gradient area: `132dp`
+- Scroll content bottom padding: `bottomActionAreaHeight + sectionGap`
+- Primary and secondary button height: `52dp`
+- Navigation icon size: `24dp`
+- App list icon size: `48dp`
+- Compact segmented control: `48dp x 32dp` per segment
 
 ## Components
 
-- Primary button: 레서판다 주황 배경, 흰색 텍스트
-- Secondary button: 흰색 배경, 얇은 테두리
-- Card: 흰색 배경, 1dp border, shadow 없음
-- Bottom navigation: 배경과 분리되는 연한 크림 floating card, 선택 탭은 fill icon과 텍스트 색상으로만 표시
-- Progress/graph: 레서판다 주황을 사용하고, 트랙은 연한 크림색을 사용
-- Repeated list: 같은 역할의 항목은 카드 여러 개로 나누지 않고, 하나의 리스트 컨테이너 안에서 1dp 구분선으로 나눈다.
+- Cards: white surface, `8dp` radius, `1dp AppBorder`, no shadow.
+- Primary button: orange fill, white text, `52dp` height, no elevation.
+- Secondary button: white fill, `1dp AppBorder`, `52dp` height.
+- Bottom navigation: floating card with `AppSurfaceMuted`, `1dp AppBorderStrong`, `8dp` radius.
+- Bottom navigation icons: unselected uses outlined icons with `AppTextSubtle`; selected uses filled icons with `AppTextStrong`.
+- Segmented button: Material 3 `SingleChoiceSegmentedButtonRow` / `SegmentedButton`; shape and size are overridden only to match AILock tokens.
+- Section title: use the shared `SectionTitle` component. Do not add a section title before the first primary item; add extra top rhythm when a title follows previous content.
+- Repeated lists: use one card container and internal `1dp AppBorder` dividers instead of separate floating cards.
+- Progress and graph bars: muted track with orange fill, `3dp` radius.
+
+## Implementation Rules
+
+- Prefer tokens from `DesignTokens.kt` over literal `dp` values.
+- New reusable UI should live under `ui/components`.
+- Keep text sizes from `Typography.kt`; avoid viewport-scaled text.
+- Material Icons do not expose a shared stroke-width control. Use icon family, size, and color to control visual weight.
+- Avoid shadows unless a component needs real elevation feedback.
+- Avoid nested cards. Use full-width sections or one repeated-list container.

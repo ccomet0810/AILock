@@ -1,4 +1,4 @@
-package com.ccomet.ailock.ui.intervention
+﻿package com.ccomet.ailock.ui.intervention
 
 import android.content.Context
 import android.content.Intent
@@ -9,13 +9,21 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,14 +35,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,11 +62,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -66,6 +83,7 @@ import com.ccomet.ailock.service.OverlayService
 import com.ccomet.ailock.ui.components.PrimaryButton
 import com.ccomet.ailock.ui.components.SecondaryButton
 import com.ccomet.ailock.ui.components.SpeechBubbleCard
+import com.ccomet.ailock.ui.theme.AILockShape
 import com.ccomet.ailock.ui.theme.AILockTheme
 import com.ccomet.ailock.ui.theme.AppBorder
 import com.ccomet.ailock.ui.theme.AppBorderStrong
@@ -73,8 +91,11 @@ import com.ccomet.ailock.ui.theme.AppSurface
 import com.ccomet.ailock.ui.theme.AppSurfaceMuted
 import com.ccomet.ailock.ui.theme.AppTextStrong
 import com.ccomet.ailock.ui.theme.AppTextSubtle
+import com.ccomet.ailock.ui.theme.PandaOrange
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -86,6 +107,9 @@ class InterventionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         window.setBackgroundDrawable(TRANSPARENT.toDrawable())
         window.setDimAmount(0f)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -162,6 +186,8 @@ private fun InterventionRoute(
     var pendingDecision by remember { mutableStateOf<PendingFinalDecision?>(null) }
     var isAdditionalRequest by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var requestJob by remember { mutableStateOf<Job?>(null) }
+    var overlayVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(packageName, timeLimitExceeded) {
         val session = container.activeUseSessionRepository.get(packageName)
@@ -172,6 +198,16 @@ private fun InterventionRoute(
         screenState = if (pending != null) InterventionScreenState.RESULT else InterventionScreenState.INPUT
     }
 
+    LaunchedEffect(Unit) {
+        overlayVisible = true
+    }
+
+    val overlayAlpha by animateFloatAsState(
+        targetValue = if (overlayVisible) 0.82f else 0f,
+        animationSpec = tween(220),
+        label = "intervention-overlay-alpha",
+    )
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         containerColor = Color.Transparent,
@@ -180,7 +216,7 @@ private fun InterventionRoute(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(Color(0xCC17110E))
+                .background(Color.Black.copy(alpha = overlayAlpha))
                 .imePadding(),
         ) {
             when (screenState) {
@@ -192,8 +228,9 @@ private fun InterventionRoute(
                     onValueChange = { reasonInput = it },
                     onAsk = {
                         if (reasonInput.isBlank()) return@InputScreen
+                        requestJob?.cancel()
                         screenState = InterventionScreenState.LOADING
-                        scope.launch {
+                        requestJob = scope.launch {
                             runCatching {
                                 if (isAdditionalRequest) {
                                     val session = activeSession ?: container.activeUseSessionRepository.get(config.packageName)
@@ -231,9 +268,11 @@ private fun InterventionRoute(
                             }.onSuccess { decision ->
                                 pendingDecision = decision
                                 screenState = InterventionScreenState.RESULT
-                            }.onFailure {
-                                errorMessage = "판단 중 문제가 생겼어요. 다시 시도해 주세요."
-                                screenState = InterventionScreenState.ERROR
+                            }.onFailure { throwable ->
+                                if (throwable !is CancellationException) {
+                                    errorMessage = "판단 중 문제가 생겼어요. 다시 시도해 주세요."
+                                    screenState = InterventionScreenState.ERROR
+                                }
                             }
                         }
                     },
@@ -241,9 +280,17 @@ private fun InterventionRoute(
                     modifier = Modifier.fillMaxSize(),
                 )
 
-                InterventionScreenState.LOADING -> LoadingScreen(modifier = Modifier.fillMaxSize())
+                InterventionScreenState.LOADING -> LoadingScreen(
+                    onCancel = {
+                        requestJob?.cancel()
+                        requestJob = null
+                        screenState = InterventionScreenState.INPUT
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
 
                 InterventionScreenState.RESULT -> ResultScreen(
+                    appName = config.appName,
                     decision = pendingDecision,
                     onUseApp = {
                         val allowedTime = pendingDecision?.allowedTime ?: 0
@@ -282,6 +329,10 @@ private fun InterventionRoute(
                             onHome()
                         }
                     },
+                    onRetry = {
+                        pendingDecision = null
+                        screenState = InterventionScreenState.INPUT
+                    },
                     modifier = Modifier.fillMaxSize(),
                 )
 
@@ -307,165 +358,260 @@ private fun InputScreen(
     onGiveUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var focused by remember { mutableStateOf(false) }
+    var panelVisible by remember { mutableStateOf(false) }
+    val expanded = focused || value.isNotBlank()
+    val speech = when {
+        isAdditionalRequest -> "시간 더 필요해?"
+        expanded -> "이유나 들어보자"
+        else -> "뭐야, ${appName} 켰어?"
+    }
+    val sheetHeight by animateDpAsState(
+        targetValue = if (expanded) 176.dp else 72.dp,
+        animationSpec = tween(180),
+        label = "reason-sheet-height",
+    )
+    val pandaBottom by animateDpAsState(
+        targetValue = if (expanded) sheetHeight + 46.dp else sheetHeight - 36.dp,
+        animationSpec = tween(190),
+        label = "panda-peek-bottom",
+    )
+
+    LaunchedEffect(Unit) {
+        panelVisible = true
+    }
+
     Box(modifier = modifier) {
-        Column(
+        PandaPrompt(
+            text = speech,
+            pandaSize = if (expanded) 116 else 104,
             modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 28.dp)
-                .padding(bottom = 248.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .align(Alignment.BottomCenter)
+                .padding(bottom = pandaBottom),
+        )
+
+        AnimatedVisibility(
+            visible = panelVisible,
+            enter = slideInVertically(animationSpec = tween(180), initialOffsetY = { it / 2 }) + fadeIn(tween(140)),
+            exit = slideOutVertically(animationSpec = tween(140), targetOffsetY = { it / 2 }) + fadeOut(tween(100)),
+            modifier = Modifier.align(Alignment.BottomCenter),
         ) {
-            SpeechCard(
-                title = appName.uppercase(),
-                subtitle = "남은 시간 ${minutesLabel(remainingMinutes)}",
+            ReasonInputCard(
+                value = value,
+                expanded = expanded,
+                remainingMinutes = remainingMinutes,
+                onValueChange = onValueChange,
+                onFocusChange = { focused = it },
+                onSubmit = onAsk,
+                onClose = onGiveUp,
             )
-            Spacer(Modifier.height(12.dp))
-            PandaImage(size = 132)
         }
-        BottomInputPanel(
-            title = if (isAdditionalRequest) "왜 더 필요해?" else "왜 켰냐?",
-            value = value,
-            onValueChange = onValueChange,
-            onAsk = onAsk,
-            onGiveUp = onGiveUp,
+    }
+}
+@Composable
+private fun LoadingScreen(
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        PandaPrompt(
+            text = "흠...",
+            pandaSize = 116,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 132.dp),
+        )
+        StatusBottomCard(
+            title = "레서판다가 생각하고 있어요...",
+            body = "이유를 살펴보고 잠깐 허용해도 되는지 판단하는 중이에요.",
+            action = {
+                IconButton(onClick = onCancel) {
+                    Icon(Icons.Default.Close, contentDescription = "취소")
+                }
+            },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
 }
-
-@Composable
-private fun LoadingScreen(modifier: Modifier = Modifier) {
-    Box(modifier = modifier) {
-        Column(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            SpeechCard(title = "흠.........")
-            Spacer(Modifier.height(18.dp))
-            PandaImage(size = 128)
-        }
-        Text(
-            text = "잠시만 기다려주세요\n잠시 후 결과가 도출됩니다",
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 34.dp),
-            color = AppTextSubtle,
-            style = MaterialTheme.typography.labelMedium,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
 @Composable
 private fun ResultScreen(
+    appName: String,
     decision: PendingFinalDecision?,
     onUseApp: () -> Unit,
     onGiveUp: () -> Unit,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val allowedTime = decision?.allowedTime ?: 0
+    val allowed = allowedTime > 0
     val message = decision?.supportMessage?.lineSequence()?.firstOrNull()?.ifBlank { null }
-        ?: if (allowedTime > 0) "필요한 만큼만 확인하고 바로 돌아와." else "지금은 멈추는 게 좋아."
+        ?: if (allowed) "필요한 것만 확인하고 바로 돌아와." else "지금은 멈추는 쪽이 더 좋아 보여."
+    val speech = if (allowed) "좋아, ${allowedTime}분만" else "이번엔 멈추자"
 
     Box(modifier = modifier) {
-        Column(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            PandaImage(size = 140)
-            Text(
-                text = message,
-                modifier = Modifier.padding(horizontal = 28.dp),
-                color = AppTextStrong,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        Column(
+        PandaPrompt(
+            text = speech,
+            pandaSize = if (allowed) 124 else 116,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 16.dp, vertical = 22.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = formatTimer(allowedTime),
-                color = AppTextSubtle,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            PrimaryButton(
-                text = if (allowedTime > 0) "앱 사용하러 가기" else "이번에 참아볼게",
-                onClick = if (allowedTime > 0) onUseApp else onGiveUp,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+                .padding(bottom = 216.dp),
+        )
+        DecisionBottomCard(
+            title = if (allowed) "${allowedTime}분 허용됐어요" else "허용하지 않았어요",
+            body = if (allowed) {
+                "${appName}에서 필요한 일만 끝내고 돌아와요. $message"
+            } else {
+                message
+            },
+            primaryText = if (allowed) "앱으로 돌아가기" else "홈으로 가기",
+            secondaryText = if (allowed) "이번엔 참아볼게" else "다시 말해볼게",
+            onPrimary = if (allowed) onUseApp else onGiveUp,
+            onSecondary = if (allowed) onGiveUp else onRetry,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
-
 @Composable
-private fun BottomInputPanel(
-    title: String,
+private fun ReasonInputCard(
     value: String,
+    expanded: Boolean,
+    remainingMinutes: Int,
     onValueChange: (String) -> Unit,
-    onAsk: () -> Unit,
-    onGiveUp: () -> Unit,
+    onFocusChange: (Boolean) -> Unit,
+    onSubmit: () -> Unit,
+    onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 28.dp, vertical = 22.dp),
         colors = CardDefaults.cardColors(containerColor = AppSurfaceMuted),
-        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
+        shape = AILockShape.card,
         border = BorderStroke(1.dp, AppBorder),
     ) {
         Column(
-            modifier = Modifier
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp)
-                .padding(top = 24.dp, bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                text = title,
-                color = AppTextStrong,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
+            if (expanded) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .width(24.dp)
+                        .height(2.dp)
+                        .clip(AILockShape.pill)
+                        .background(AppBorderStrong),
+                )
+            }
             OutlinedTextField(
                 value = value,
                 onValueChange = onValueChange,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(148.dp),
-                placeholder = { Text("여기에 이유를 입력해줘") },
-                shape = RoundedCornerShape(8.dp),
+                    .height(if (expanded) 124.dp else 52.dp)
+                    .onFocusChanged { onFocusChange(it.isFocused) },
+                placeholder = {
+                    Text(if (expanded) "왜 지금 ${remainingMinutes.coerceAtLeast(1)}분이 필요해?" else "레서판다에게 물어보기")
+                },
+                trailingIcon = {
+                    IconButton(onClick = if (value.isBlank()) onClose else onSubmit) {
+                        Icon(
+                            imageVector = if (value.isBlank()) Icons.Default.Close else Icons.Default.ArrowForward,
+                            contentDescription = if (value.isBlank()) "닫기" else "보내기",
+                        )
+                    }
+                },
+                shape = AILockShape.control,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = AppSurface,
                     unfocusedContainerColor = AppSurface,
                     focusedBorderColor = AppBorderStrong,
                     unfocusedBorderColor = AppBorder,
+                    cursorColor = PandaOrange,
                 ),
-                minLines = 5,
-            )
-            PrimaryButton(
-                text = "레서판다에게 물어보기",
-                onClick = onAsk,
-                enabled = value.isNotBlank(),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            SecondaryButton(
-                text = "이번에 참아볼게",
-                onClick = onGiveUp,
-                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { if (value.isNotBlank()) onSubmit() }),
+                singleLine = !expanded,
+                minLines = if (expanded) 3 else 1,
+                maxLines = if (expanded) 4 else 1,
             )
         }
     }
 }
 
+@Composable
+private fun StatusBottomCard(
+    title: String,
+    body: String,
+    action: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(
+        visible = true,
+        enter = slideInVertically(animationSpec = tween(170), initialOffsetY = { it / 2 }) + fadeIn(tween(120)),
+        modifier = modifier,
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 28.dp, vertical = 22.dp),
+            colors = CardDefaults.cardColors(containerColor = AppSurfaceMuted),
+            shape = AILockShape.card,
+            border = BorderStroke(1.dp, AppBorder),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.dp,
+                    color = PandaOrange,
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = AppTextStrong)
+                    Text(body, style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
+                }
+                action()
+            }
+        }
+    }
+}
+
+@Composable
+private fun DecisionBottomCard(
+    title: String,
+    body: String,
+    primaryText: String,
+    secondaryText: String,
+    onPrimary: () -> Unit,
+    onSecondary: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 22.dp, vertical = 22.dp),
+        colors = CardDefaults.cardColors(containerColor = AppSurfaceMuted),
+        shape = AILockShape.card,
+        border = BorderStroke(1.dp, AppBorder),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppTextStrong)
+            Text(body, style = MaterialTheme.typography.bodyMedium, color = AppTextSubtle)
+            PrimaryButton(primaryText, onPrimary, modifier = Modifier.fillMaxWidth())
+            SecondaryButton(secondaryText, onSecondary, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
 @Composable
 private fun SpeechCard(
     title: String,
@@ -477,6 +623,25 @@ private fun SpeechCard(
         text = subtitle.orEmpty(),
         modifier = modifier.width(270.dp),
     )
+}
+
+@Composable
+private fun PandaPrompt(
+    text: String,
+    pandaSize: Int,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        SpeechBubbleCard(
+            title = text,
+            text = "",
+            modifier = Modifier.width(176.dp),
+        )
+        PandaImage(size = pandaSize)
+    }
 }
 
 @Composable

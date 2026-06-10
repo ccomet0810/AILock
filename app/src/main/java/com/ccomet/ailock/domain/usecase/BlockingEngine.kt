@@ -14,20 +14,15 @@ class BlockingEngine(
     private val appListLoader: AppListLoader,
 ) {
     suspend fun evaluate(packageName: String): BlockDecision {
-        ignoreReason(packageName)?.let { return BlockDecision.Allow }
-        if (repository.hasActiveTemporaryAllowance(packageName)) return BlockDecision.Allow
+        val ignoredPackages = ignoredPackages()
+        if (BlockingPolicy.isIgnored(packageName, ignoredPackages)) return BlockDecision.Allow
 
-        val config = repository.lockedApps.first().firstOrNull { it.packageName == packageName }
-            ?: return BlockDecision.Allow
-
-        val today = TimeUtils.currentDayOfWeek()
-        if (config.selectedDays.isNotEmpty() && today !in config.selectedDays) {
-            return BlockDecision.Allow
-        }
-
-        return BlockDecision.ShowIntervention(
-            config = config,
-            reason = "ai unlock judgment",
+        return BlockingPolicy.evaluate(
+            packageName = packageName,
+            lockedApps = repository.lockedApps.first(),
+            today = TimeUtils.currentDayOfWeek(),
+            hasActiveTemporaryAllowance = repository.hasActiveTemporaryAllowance(packageName),
+            ignoredPackages = ignoredPackages,
         )
     }
 
@@ -36,14 +31,8 @@ class BlockingEngine(
         repository.recordEvent(packageName, appName, com.ccomet.ailock.data.model.UsageEventType.OPEN)
     }
 
-    private fun ignoreReason(packageName: String): String? {
-        if (packageName.isBlank()) return "blank package"
-        if (packageName == context.packageName) return "own app"
-        if (packageName == "com.android.settings") return "settings"
-        if (packageName == "com.android.systemui") return "system ui"
-        if (packageName in homePackages()) return "home launcher"
-        return null
-    }
+    private fun ignoredPackages(): Set<String> =
+        setOf(context.packageName, "com.android.settings", "com.android.systemui") + homePackages()
 
     private fun homePackages(): Set<String> {
         val intent = Intent(Intent.ACTION_MAIN).apply {

@@ -1,5 +1,6 @@
 package com.ccomet.ailock.service
 
+import android.animation.ValueAnimator
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
@@ -13,12 +14,19 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.provider.Settings
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.view.Gravity
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsAnimation
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -35,7 +43,9 @@ import com.ccomet.ailock.data.work.SessionWorkScheduler
 import com.ccomet.ailock.ui.intervention.InterventionActivity
 import com.ccomet.ailock.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.lang.ref.WeakReference
@@ -153,104 +163,268 @@ object AILockOverlayController {
         private var session: ActiveUseSession? = initialSession
         private var pending: PendingFinalDecision? = initialPending
         private var bottomStack: FrameLayout? = null
+        private var promptStack: View? = null
         private var lastInputReason: String = ""
+        private var judgeJob: Job? = null
+        private var keyboardTranslationY = 0f
+        private var keyboardWasVisible = false
+        private var lastKeyboardInsetBottom = 0
+        private var onKeyboardShowStarted: (() -> Unit)? = null
+        private var onKeyboardDismissStarted: (() -> Unit)? = null
 
         fun build(): View {
             root = FrameLayout(context).apply {
-                setBackgroundColor(Color.argb(190, 0, 0, 0))
+                setBackgroundColor(Color.argb(0, 0, 0, 0))
                 isClickable = true
                 isFocusable = true
             }
-            if (pending != null) {
-                renderResult(pending!!)
-            } else {
-                renderInput(animate = true)
+            if (pending != null && session == null && !timeLimitExceeded) {
+                pending = null
+                scope.launch {
+                    container.pendingFinalDecisionRepository.clear(config.packageName)
+                }
             }
+            ValueAnimator.ofInt(0, 208).apply {
+                duration = 220L
+                addUpdateListener { animator ->
+                    root.setBackgroundColor(Color.argb(animator.animatedValue as Int, 0, 0, 0))
+                }
+                start()
+            }
+            renderInput(animate = true)
             installKeyboardFollower()
             return root
         }
 
         private fun renderInput(animate: Boolean) {
             root.removeAllViews()
+            promptStack = null
+            onKeyboardShowStarted = null
+            onKeyboardDismissStarted = null
             val isRetry = pending != null
+            var expanded = false
 
-            val panel = bottomPanel(
-                title = if (isRetry) "다시 말해봐" else "왜 켰냐?",
-                hint = "여기에 이유를 입력해줘",
-                primary = "레서판다에게 물어보기",
-                secondary = "이번에 참아볼게",
-                onPrimary = { input ->
-                    if (input.isBlank()) return@bottomPanel
-                    lastInputReason = input
-                    renderLoading()
-                    scope.launch {
-                        runCatching {
-                            judgeUnlock(input)
-                        }.onSuccess {
-                            pending = it
-                            if (it.allowedTime <= 0) {
-                                container.pendingFinalDecisionRepository.save(config.packageName, it)
-                            }
-                            renderResult(it)
-                        }.onFailure {
-                            renderError("판단 중 문제가 생겼어요. 다시 시도해 주세요.")
-                        }
-                    }
-                },
-                onSecondary = { dismissAndHome() },
+            val speech = speechCard(
+                title = if (isRetry) "다시 말해볼래?" else "뭐야, ${config.appName} 켰어?",
             )
-
-            val visual = LinearLayout(context).apply {
+            val panda = pandaView()
+            val prompt = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(28.dp(), 24.dp(), 28.dp(), 18.dp())
                 alpha = if (animate) 0f else 1f
-                translationY = if (animate) 12.dp().toFloat() else 0f
+                addView(speech)
+                addView(panda, LinearLayout.LayoutParams(104.dp(), 104.dp()))
             }
-            visual.addView(
-                speechCard(
-                    title = config.appName.uppercase(),
-                    subtitle = "남은 시간 ${minutesLabel(remainingInputMinutes())}",
-                ),
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
-            )
-            visual.addView(
-                pandaView(),
-                LinearLayout.LayoutParams(132.dp(), 132.dp()).apply { topMargin = 12.dp() },
-            )
-            root.addView(
-                visual,
-                FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT).apply {
-                    bottomMargin = PANEL_SPACE.dp()
-                },
-            )
+            val promptParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM,
+            ).apply {
+                leftMargin = 28.dp()
+                rightMargin = 28.dp()
+                bottomMargin = 52.dp()
+            }
+            root.addView(prompt, promptParams)
+            promptStack = prompt
 
+            val handle = View(context).apply {
+                visibility = View.GONE
+                background = rounded(APP_BORDER_STRONG, 1.dp(), APP_BORDER_STRONG, 0)
+            }
+            lateinit var updateExpanded: (Boolean) -> Unit
+            var inputHeightAnimator: ValueAnimator? = null
+            var promptMarginAnimator: ValueAnimator? = null
+            val input = object : EditText(context) {
+                override fun onKeyPreIme(keyCode: Int, event: KeyEvent): Boolean {
+                    if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                        showSoftInputOnFocus = false
+                        if (text.isNullOrBlank()) {
+                            updateExpanded(false)
+                        }
+                    }
+                    return super.onKeyPreIme(keyCode, event)
+                }
+            }.apply {
+                hint = "레서판다에게 물어보기"
+                setSingleLine(true)
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                textSize = 15f
+                gravity = Gravity.CENTER_VERTICAL
+                setTextColor(APP_TEXT_STRONG)
+                setHintTextColor(APP_TEXT_SUBTLE)
+                setPadding(12.dp(), 0, 56.dp(), 0)
+                background = rounded(APP_BACKGROUND, 8.dp(), Color.TRANSPARENT, 0)
+                showSoftInputOnFocus = false
+            }
+            val action = ImageView(context).apply {
+                setImageResource(R.drawable.ic_action_close)
+                setColorFilter(APP_TEXT_STRONG)
+                scaleType = ImageView.ScaleType.CENTER
+                setPadding(10.dp(), 10.dp(), 10.dp(), 10.dp())
+                contentDescription = "닫기"
+                background = rounded(Color.TRANSPARENT, 8.dp(), Color.TRANSPARENT, 0)
+                isClickable = true
+                isFocusable = true
+            }
+            val inputRow = FrameLayout(context).apply {
+                background = rounded(APP_BACKGROUND, 8.dp(), Color.TRANSPARENT, 0)
+                addView(input, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, 52.dp(), Gravity.CENTER))
+                addView(action, FrameLayout.LayoutParams(46.dp(), 46.dp(), Gravity.END or Gravity.BOTTOM))
+            }
+            val panel = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(18.dp(), 10.dp(), 12.dp(), 10.dp())
+                background = rounded(APP_BACKGROUND, 8.dp(), APP_BORDER, 1.dp())
+                addView(handle, LinearLayout.LayoutParams(24.dp(), 2.dp()).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    bottomMargin = 8.dp()
+                })
+                addView(inputRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            }
             val panelStack = FrameLayout(context).apply {
                 clipChildren = false
                 clipToPadding = false
+                setPadding(28.dp(), 0, 28.dp(), 22.dp())
                 addView(panel, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
             }
             bottomStack = panelStack
             root.addView(panelStack, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+
+            updateExpanded = { nextExpanded: Boolean ->
+                if (expanded != nextExpanded) {
+                    expanded = nextExpanded
+                    handle.visibility = if (expanded) View.VISIBLE else View.GONE
+                    input.hint = if (expanded) "왜 지금 ${remainingInputMinutes().coerceAtLeast(1)}분이 필요해?" else "레서판다에게 물어보기"
+                    input.gravity = if (expanded) Gravity.TOP else Gravity.CENTER_VERTICAL
+                    input.setSingleLine(!expanded)
+                    input.minLines = if (expanded) 3 else 1
+                    input.maxLines = if (expanded) 4 else 1
+                    input.setPadding(12.dp(), if (expanded) 12.dp() else 0, 56.dp(), if (expanded) 42.dp() else 0)
+                    val inputParams = input.layoutParams as FrameLayout.LayoutParams
+                    inputHeightAnimator?.cancel()
+                    inputHeightAnimator = ValueAnimator.ofInt(inputParams.height, if (expanded) 124.dp() else 52.dp()).apply {
+                        duration = 180L
+                        interpolator = DecelerateInterpolator()
+                        addUpdateListener {
+                            inputParams.height = it.animatedValue as Int
+                            input.layoutParams = inputParams
+                        }
+                        start()
+                    }
+                    val actionParams = action.layoutParams as FrameLayout.LayoutParams
+                    actionParams.gravity = Gravity.END or Gravity.BOTTOM
+                    action.layoutParams = actionParams
+                    updateInputActionStyle(action, input.text?.isNotBlank() == true)
+                    panel.setPadding(18.dp(), if (expanded) 12.dp() else 10.dp(), 12.dp(), 10.dp())
+                    (speech.getChildAt(0) as? LinearLayout)?.let { card ->
+                        (card.getChildAt(0) as? TextView)?.text = if (expanded) "이유나 들어보자" else "뭐야, ${config.appName} 켰어?"
+                    }
+                    val pandaParams = panda.layoutParams as LinearLayout.LayoutParams
+                    pandaParams.width = if (expanded) 116.dp() else 104.dp()
+                    pandaParams.height = if (expanded) 116.dp() else 104.dp()
+                    panda.layoutParams = pandaParams
+                    val nextBottom = if (expanded) 176.dp() else 52.dp()
+                    val startBottom = promptParams.bottomMargin
+                    promptMarginAnimator?.cancel()
+                    promptMarginAnimator = ValueAnimator.ofInt(startBottom, nextBottom).apply {
+                        duration = 180L
+                        interpolator = DecelerateInterpolator()
+                        addUpdateListener {
+                            promptParams.bottomMargin = it.animatedValue as Int
+                            prompt.layoutParams = promptParams
+                        }
+                        start()
+                    }
+                }
+            }
+
+            input.setOnFocusChangeListener { _, hasFocus ->
+                if (!hasFocus) {
+                    input.showSoftInputOnFocus = false
+                    if (input.text.isNullOrBlank()) {
+                        updateExpanded(false)
+                    }
+                }
+            }
+            onKeyboardShowStarted = {
+                updateExpanded(true)
+            }
+            onKeyboardDismissStarted = {
+                input.showSoftInputOnFocus = false
+                if (input.text.isNullOrBlank()) {
+                    updateExpanded(false)
+                }
+            }
+            input.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_DOWN) {
+                    input.showSoftInputOnFocus = true
+                    updateExpanded(true)
+                    input.requestFocus()
+                }
+                false
+            }
+            input.setOnClickListener {
+                input.showSoftInputOnFocus = true
+                updateExpanded(true)
+                input.requestFocus()
+                input.post {
+                    (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                        ?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+                }
+            }
+            input.addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    val hasText = !s.isNullOrBlank()
+                    action.setImageResource(if (hasText) R.drawable.ic_action_chevron_right else R.drawable.ic_action_close)
+                    action.contentDescription = if (hasText) "보내기" else "닫기"
+                    updateInputActionStyle(action, hasText)
+                }
+                override fun afterTextChanged(s: Editable?) = Unit
+            })
+            action.setOnClickListener {
+                val value = input.text?.toString()?.trim().orEmpty()
+                if (value.isBlank()) {
+                    dismissAndHome()
+                } else {
+                    lastInputReason = value
+                    renderLoading()
+                    judgeJob?.cancel()
+                    judgeJob = scope.launch {
+                        runCatching {
+                            judgeUnlock(value)
+                        }.onSuccess {
+                            pending = it
+                            renderResult(it)
+                        }.onFailure {
+                            if (it !is CancellationException) {
+                                renderError("판단 중 문제가 생겼어요. 다시 시도해 주세요.")
+                            }
+                        }
+                    }
+                }
+            }
 
             if (!animate) return
 
             panelStack.translationY = PANEL_ENTER_OFFSET.dp().toFloat()
             panelStack.animate()
                 .translationY(0f)
-                .setDuration(110)
-                .setInterpolator(DecelerateInterpolator())
+                .setDuration(150)
+                .setInterpolator(OvershootInterpolator(0.9f))
                 .start()
 
-            visual.animate()
+            prompt.animate()
                 .alpha(1f)
-                .translationY(0f)
-                .setDuration(160)
+                .setDuration(170)
                 .setStartDelay(70L)
                 .setInterpolator(DecelerateInterpolator())
                 .start()
-        }
 
+            input.postDelayed({
+                input.requestFocus()
+            }, 220L)
+        }
         private suspend fun judgeUnlock(input: String): PendingFinalDecision {
             val dailyLimit = dailyLimitMinutes()
             val pre = container.ollamaDecisionRepository.judgePre(
@@ -291,88 +465,156 @@ object AILockOverlayController {
         private fun renderLoading() {
             root.removeAllViews()
             bottomStack = null
-            val center = LinearLayout(context).apply {
+            promptStack = null
+            onKeyboardShowStarted = null
+            onKeyboardDismissStarted = null
+            val prompt = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(28.dp(), 0, 28.dp(), 0)
-            }
-            center.addView(speechCard("흠........"))
-            center.addView(pandaView(), LinearLayout.LayoutParams(128.dp(), 128.dp()).apply { topMargin = 18.dp() })
-            root.addView(center, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-
-            val bottom = TextView(context).apply {
-                text = context.getString(R.string.judgement_loading_message)
-                textSize = 13f
-                gravity = Gravity.CENTER
-                setTextColor(Color.WHITE)
+                addView(speechCard("흠..."))
+                addView(pandaView(), LinearLayout.LayoutParams(116.dp(), 116.dp()))
             }
             root.addView(
-                bottom,
+                prompt,
                 FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
-                    bottomMargin = 38.dp()
+                    leftMargin = 28.dp()
+                    rightMargin = 28.dp()
+                    bottomMargin = 132.dp()
                 },
             )
-        }
+            promptStack = prompt
 
+            val panel = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(18.dp(), 14.dp(), 12.dp(), 14.dp())
+                background = rounded(APP_SURFACE_MUTED, 8.dp(), APP_BORDER, 1.dp())
+                addView(
+                    TextView(context).apply {
+                        text = "…"
+                        textSize = 24f
+                        gravity = Gravity.CENTER
+                        setTextColor(PANDA_ORANGE)
+                    },
+                    LinearLayout.LayoutParams(30.dp(), LinearLayout.LayoutParams.WRAP_CONTENT),
+                )
+                addView(
+                    LinearLayout(context).apply {
+                        orientation = LinearLayout.VERTICAL
+                        addView(TextView(context).apply {
+                            text = "레서판다가 생각하고 있어요..."
+                            textSize = 15f
+                            typeface = Typeface.DEFAULT_BOLD
+                            setTextColor(APP_TEXT_STRONG)
+                        })
+                        addView(TextView(context).apply {
+                            text = "이유를 살펴보고 잠깐 허용해도 되는지 판단하는 중이에요."
+                            textSize = 12f
+                            setTextColor(APP_TEXT_SUBTLE)
+                        })
+                    },
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+                )
+                addView(
+                    ImageView(context).apply {
+                        setImageResource(R.drawable.ic_action_close)
+                        setColorFilter(APP_TEXT_STRONG)
+                        scaleType = ImageView.ScaleType.CENTER
+                        setPadding(10.dp(), 10.dp(), 10.dp(), 10.dp())
+                        contentDescription = "취소"
+                        background = rounded(Color.TRANSPARENT, 8.dp(), APP_BORDER_STRONG, 1.dp())
+                        isClickable = true
+                        isFocusable = true
+                        setOnClickListener {
+                            judgeJob?.cancel()
+                            judgeJob = null
+                            renderInput(animate = true)
+                        }
+                    },
+                    LinearLayout.LayoutParams(46.dp(), 46.dp()).apply { leftMargin = 10.dp() },
+                )
+            }
+            val stack = FrameLayout(context).apply {
+                setPadding(28.dp(), 0, 28.dp(), 22.dp())
+                addView(panel, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+            }
+            bottomStack = stack
+            root.addView(stack, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+            stack.translationY = PANEL_ENTER_OFFSET.dp().toFloat()
+            stack.animate().translationY(0f).setDuration(150).setInterpolator(DecelerateInterpolator()).start()
+        }
         private fun renderResult(decision: PendingFinalDecision) {
             root.removeAllViews()
             bottomStack = null
+            promptStack = null
+            onKeyboardShowStarted = null
+            onKeyboardDismissStarted = null
             val allowedTime = decision.allowedTime
+            val allowed = allowedTime > 0
             val message = decision.supportMessage?.lineSequence()?.firstOrNull()?.takeIf { it.isNotBlank() }
-                ?: if (allowedTime > 0) "필요한 만큼만 확인하고 바로 돌아와." else "지금은 멈추는 게 좋아."
+                ?: if (allowed) "필요한 것만 확인하고 바로 돌아와." else "지금은 멈추는 쪽이 더 좋아 보여."
 
-            val center = LinearLayout(context).apply {
+            val prompt = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(28.dp(), 0, 28.dp(), 80.dp())
+                addView(speechCard(if (allowed) "좋아, ${allowedTime}분만" else "이번엔 멈추자"))
+                addView(pandaView(), LinearLayout.LayoutParams(if (allowed) 124.dp() else 116.dp(), if (allowed) 124.dp() else 116.dp()))
             }
-            center.addView(pandaView(), LinearLayout.LayoutParams(142.dp(), 142.dp()))
-            center.addView(
-                TextView(context).apply {
-                    text = message
-                    textSize = 17f
+            root.addView(
+                prompt,
+                FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+                    leftMargin = 28.dp()
+                    rightMargin = 28.dp()
+                    bottomMargin = 216.dp()
+                },
+            )
+            promptStack = prompt
+
+            val panel = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(18.dp(), 18.dp(), 18.dp(), 18.dp())
+                background = rounded(APP_SURFACE_MUTED, 8.dp(), APP_BORDER, 1.dp())
+                addView(TextView(context).apply {
+                    text = if (allowed) "${allowedTime}분 허용됐어요" else "허용하지 않았어요"
+                    textSize = 18f
                     typeface = Typeface.DEFAULT_BOLD
-                    gravity = Gravity.CENTER
-                    setTextColor(Color.WHITE)
-                    setPadding(0, 14.dp(), 0, 0)
+                    setTextColor(APP_TEXT_STRONG)
+                })
+                addView(TextView(context).apply {
+                    text = if (allowed) "${config.appName}에서 필요한 일만 끝내고 돌아와요. $message" else message
+                    textSize = 14f
+                    setTextColor(APP_TEXT_SUBTLE)
+                    setPadding(0, 8.dp(), 0, 0)
                     maxLines = 4
-                },
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
-            )
-            root.addView(center, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-
-            val bottom = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(16.dp(), 0, 16.dp(), 22.dp())
-                gravity = Gravity.CENTER
-            }
-            bottom.addView(
-                TextView(context).apply {
-                    text = formatTimer(allowedTime)
-                    textSize = 16f
-                    gravity = Gravity.CENTER
-                    setTextColor(Color.WHITE)
-                },
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
-            )
-            bottom.addView(
-                actionButton(if (allowedTime > 0) "앱 사용하러 가기" else "다시 설명할게") {
-                    if (allowedTime > 0) allowAndDismiss(decision) else renderInput(animate = true)
-                },
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 52.dp()).apply { topMargin = 10.dp() },
-            )
-            if (allowedTime <= 0) {
-                bottom.addView(
-                    actionButton("이번엔 참아볼게", primary = false) { dismissAndHome() },
+                })
+                addView(
+                    actionButton(if (allowed) "앱으로 돌아가기" else "홈으로 가기") {
+                        if (allowed) allowAndDismiss(decision) else dismissAndHome()
+                    },
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 52.dp()).apply { topMargin = 14.dp() },
+                )
+                addView(
+                    actionButton(if (allowed) "이번엔 참아볼게" else "다시 말해볼게", primary = false) {
+                        if (allowed) dismissAndHome() else renderInput(animate = true)
+                    },
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 52.dp()).apply { topMargin = 10.dp() },
                 )
             }
-            root.addView(bottom, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+            val stack = FrameLayout(context).apply {
+                setPadding(22.dp(), 0, 22.dp(), 22.dp())
+                addView(panel, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+            }
+            bottomStack = stack
+            root.addView(stack, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+            stack.translationY = PANEL_ENTER_OFFSET.dp().toFloat()
+            stack.animate().translationY(0f).setDuration(150).setInterpolator(DecelerateInterpolator()).start()
         }
-
         private fun renderError(message: String) {
             root.removeAllViews()
             bottomStack = null
+            promptStack = null
+            onKeyboardShowStarted = null
+            onKeyboardDismissStarted = null
             val panel = bottomPanel(
                 title = "앗",
                 hint = message,
@@ -485,6 +727,16 @@ object AILockOverlayController {
                 setOnClickListener { onClick() }
             }
 
+        private fun updateInputActionStyle(action: ImageView, hasText: Boolean) {
+            action.background = rounded(
+                if (hasText) PANDA_ORANGE else Color.TRANSPARENT,
+                8.dp(),
+                Color.TRANSPARENT,
+                0,
+            )
+            action.setColorFilter(if (hasText) Color.WHITE else APP_TEXT_STRONG)
+        }
+
         private fun allowAndDismiss(decision: PendingFinalDecision) {
             val allowedTime = decision.allowedTime
             if (allowedTime <= 0) {
@@ -529,19 +781,107 @@ object AILockOverlayController {
         }
 
         private fun installKeyboardFollower() {
-            root.viewTreeObserver.addOnGlobalLayoutListener {
-                val rect = Rect()
-                root.getWindowVisibleDisplayFrame(rect)
-                val hiddenHeight = (root.rootView.height - rect.bottom).coerceAtLeast(0)
-                val target = if (hiddenHeight > 120.dp()) -hiddenHeight.toFloat() else 0f
-                val stack = bottomStack ?: return@addOnGlobalLayoutListener
-                if (target == 0f && stack.translationY > 0f) return@addOnGlobalLayoutListener
-                if (abs(stack.translationY - target) < 1f) return@addOnGlobalLayoutListener
-                stack.animate()
-                    ?.translationY(target)
-                    ?.setDuration(120)
-                    ?.setInterpolator(DecelerateInterpolator())
-                    ?.start()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                root.setWindowInsetsAnimationCallback(
+                    object : WindowInsetsAnimation.Callback(WindowInsetsAnimation.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+                        override fun onProgress(
+                            insets: WindowInsets,
+                            runningAnimations: MutableList<WindowInsetsAnimation>,
+                        ): WindowInsets {
+                            applyImeTranslation(insets, animate = false)
+                            return insets
+                        }
+
+                        override fun onEnd(animation: WindowInsetsAnimation) {
+                            root.rootWindowInsets?.let { applyImeTranslation(it, animate = false) }
+                        }
+                    },
+                )
+                root.setOnApplyWindowInsetsListener { _, insets ->
+                    applyImeTranslation(insets, animate = false)
+                    insets
+                }
+                root.post {
+                    root.requestApplyInsets()
+                }
+            } else {
+                root.viewTreeObserver.addOnGlobalLayoutListener {
+                    applyVisibleFrameTranslation(animate = false)
+                }
+                root.post {
+                    applyVisibleFrameTranslation(animate = false)
+                }
+            }
+        }
+
+        private fun applyImeTranslation(insets: WindowInsets, animate: Boolean) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+            val stack = bottomStack ?: return
+            if (root.height == 0) return
+            val imeBottom = insets.getInsets(WindowInsets.Type.ime()).bottom
+            val isImeVisible = insets.isVisible(WindowInsets.Type.ime())
+            val isKeyboardVisible = isImeVisible && imeBottom > 0
+            if (!keyboardWasVisible && isKeyboardVisible) {
+                onKeyboardShowStarted?.invoke()
+            }
+            if (keyboardWasVisible && imeBottom < lastKeyboardInsetBottom) {
+                onKeyboardDismissStarted?.invoke()
+            }
+            val target = if (isImeVisible && imeBottom > 0) {
+                translationForVisibleBottom(root.height - imeBottom, stack)
+            } else {
+                0f
+            }
+            keyboardWasVisible = isKeyboardVisible
+            lastKeyboardInsetBottom = imeBottom
+            applyOverlayTranslation(target, animate)
+        }
+
+        private fun applyVisibleFrameTranslation(animate: Boolean) {
+            val rect = Rect()
+            root.getWindowVisibleDisplayFrame(rect)
+            val stack = bottomStack ?: return
+            if (root.height == 0) return
+            val rootLocation = IntArray(2)
+            root.getLocationOnScreen(rootLocation)
+            val visibleBottom = rect.bottom - rootLocation[1]
+            val target = translationForVisibleBottom(visibleBottom, stack)
+            val isKeyboardVisible = target < -1f
+            if (!keyboardWasVisible && isKeyboardVisible) {
+                onKeyboardShowStarted?.invoke()
+            }
+            if (keyboardWasVisible && target > keyboardTranslationY + 1f) {
+                onKeyboardDismissStarted?.invoke()
+            }
+            keyboardWasVisible = isKeyboardVisible
+            applyOverlayTranslation(target, animate)
+        }
+
+        private fun translationForVisibleBottom(visibleBottom: Int, stack: FrameLayout): Float {
+            val stackBottom = root.height - stack.paddingBottom
+            return (visibleBottom - KEYBOARD_TOP_GAP.dp() - stackBottom).coerceAtMost(0).toFloat()
+        }
+
+        private fun applyOverlayTranslation(target: Float, animate: Boolean) {
+            if (target == 0f && bottomStack?.translationY?.let { it > 0f } == true) {
+                keyboardTranslationY = target
+                return
+            }
+            if (abs(keyboardTranslationY - target) < 1f && animate) return
+            keyboardTranslationY = target
+            listOfNotNull(bottomStack, promptStack).forEach { view ->
+                if (target == 0f && view.translationY > 0f) return@forEach
+                if (abs(view.translationY - target) < 1f) return@forEach
+                view.animate().cancel()
+                if (animate) {
+                    view.animate()
+                        .translationY(target)
+                        .setDuration(180L)
+                        .setInterpolator(DecelerateInterpolator())
+                        .start()
+                } else {
+                    view.translationY = target
+                }
             }
         }
 
@@ -646,8 +986,10 @@ object AILockOverlayController {
     private const val SESSION_STATE_IN_USE = "IN_USE"
     private const val DEFAULT_ALLOW_MINUTES = 3
     private const val DEFAULT_DAILY_LIMIT_MINUTES = 120
+    private const val KEYBOARD_TOP_GAP = 20
     private const val PANEL_ENTER_OFFSET = 140
     private const val PANEL_SPACE = 350
+    private val APP_BACKGROUND = Color.rgb(255, 251, 245)
     private val APP_SURFACE_MUTED = Color.rgb(255, 242, 227)
     private val APP_BORDER = Color.rgb(225, 214, 202)
     private val APP_BORDER_STRONG = Color.rgb(111, 98, 90)

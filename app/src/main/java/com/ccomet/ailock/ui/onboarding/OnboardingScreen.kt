@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -29,8 +28,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,16 +43,17 @@ import com.ccomet.ailock.data.model.InstalledAppInfo
 import com.ccomet.ailock.data.model.PandaEmotion
 import com.ccomet.ailock.data.model.UserProfile
 import com.ccomet.ailock.ui.AILockUiState
+import com.ccomet.ailock.ui.components.AilockOutlinedTextField
 import com.ccomet.ailock.ui.components.FloatingBottomActionButton
 import com.ccomet.ailock.ui.components.InstalledAppIcon
 import com.ccomet.ailock.ui.components.PandaSpeechBubble
 import com.ccomet.ailock.ui.components.PermissionCards
-import com.ccomet.ailock.ui.components.PrimaryButton
 import com.ccomet.ailock.ui.theme.AppBorder
 import com.ccomet.ailock.ui.theme.AppSurface
 import com.ccomet.ailock.ui.theme.AppSurfaceMuted
+import com.ccomet.ailock.ui.theme.AILockLayout
 import com.ccomet.ailock.ui.theme.AILockShape
-import com.ccomet.ailock.ui.theme.PandaOrange
+import com.ccomet.ailock.ui.theme.AILockSpacing
 
 private const val LastOnboardingStep = 4
 
@@ -109,23 +107,36 @@ fun OnboardingScreen(
                 .imePadding(),
         ) {
             if (step == 0 || step == LastOnboardingStep) {
-                CenteredPandaStep(
-                    text = if (step == 0) {
-                        "안녕! 나는 네 앱 사용 약속을 지켜줄 레서판다야."
-                    } else {
-                        readyMessage(uiState)
-                    },
-                    emotion = if (step == 0) PandaEmotion.HAPPY else PandaEmotion.ENCOURAGING,
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(bottom = AILockLayout.scrollContentBottomPadding)
+                        .padding(horizontal = AILockSpacing.screenHorizontal, vertical = AILockSpacing.contentVertical),
+                    verticalArrangement = Arrangement.spacedBy(AILockSpacing.sectionGap),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    StepIndicator(currentStep = step + 1, totalSteps = LastOnboardingStep + 1)
+                    CenteredPandaStep(
+                        text = if (step == 0) {
+                            "안녕! 나는 네 앱 사용 약속을 지켜줄 레서판다야."
+                        } else {
+                            readyMessage(uiState)
+                        },
+                        emotion = if (step == 0) PandaEmotion.HAPPY else PandaEmotion.ENCOURAGING,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                    )
+                }
             } else {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(bottom = 140.dp)
-                        .padding(horizontal = 22.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                        .padding(bottom = AILockLayout.scrollContentBottomPadding)
+                        .padding(horizontal = AILockSpacing.screenHorizontal, vertical = AILockSpacing.contentVertical),
+                    verticalArrangement = Arrangement.spacedBy(AILockSpacing.sectionGap),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     StepIndicator(currentStep = step + 1, totalSteps = LastOnboardingStep + 1)
@@ -179,7 +190,7 @@ private fun PermissionsStep(
     onNotificationPermission: () -> Unit,
     onBatteryPermission: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
+    Column(verticalArrangement = Arrangement.spacedBy(AILockSpacing.listGap), modifier = Modifier.fillMaxWidth()) {
         PandaSpeechBubble(
             text = "먼저 앱 사용을 감지하고 필요한 순간에 말을 걸 수 있게 권한을 확인할게.",
             emotion = PandaEmotion.THINKING,
@@ -197,37 +208,33 @@ private fun PermissionsStep(
 
 @Composable
 private fun ProfileStep(profile: UserProfile, onProfileChange: (UserProfile) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
+    Column(verticalArrangement = Arrangement.spacedBy(AILockSpacing.listGap), modifier = Modifier.fillMaxWidth()) {
         PandaSpeechBubble("기본 정보를 알려주면 더 자연스럽게 도와줄게.", emotion = PandaEmotion.THINKING)
-        OutlinedTextField(
+        AilockOutlinedTextField(
             value = profile.name,
             onValueChange = { onProfileChange(profile.copy(name = it)) },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("이름") },
-            singleLine = true,
+            label = "이름",
         )
-        OutlinedTextField(
+        AilockOutlinedTextField(
             value = profile.age?.toString().orEmpty(),
             onValueChange = { onProfileChange(profile.copy(age = it.toIntOrNull())) },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("나이") },
+            label = "나이",
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
+        Row(horizontalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap), modifier = Modifier.fillMaxWidth()) {
+            AilockOutlinedTextField(
                 value = profile.gender,
                 onValueChange = { onProfileChange(profile.copy(gender = it)) },
                 modifier = Modifier.weight(1f),
-                label = { Text("성별") },
-                singleLine = true,
+                label = "성별",
             )
-            OutlinedTextField(
+            AilockOutlinedTextField(
                 value = profile.job,
                 onValueChange = { onProfileChange(profile.copy(job = it)) },
                 modifier = Modifier.weight(1f),
-                label = { Text("직업") },
-                singleLine = true,
+                label = "직업",
             )
         }
     }
@@ -242,7 +249,7 @@ private fun AppsStep(
     val selectedApps = uiState.onboardingSelectedApps
     val selectedNames = selectedApps.joinToString(", ") { it.appName }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
+    Column(verticalArrangement = Arrangement.spacedBy(AILockSpacing.listGap), modifier = Modifier.fillMaxWidth()) {
         PandaSpeechBubble(
             text = if (selectedApps.isEmpty()) {
                 "처음 관리할 앱을 골라줘."
@@ -251,19 +258,11 @@ private fun AppsStep(
             },
             emotion = PandaEmotion.DEFAULT,
         )
-        OutlinedTextField(
+        AilockOutlinedTextField(
             value = uiState.appQuery,
             onValueChange = onQuery,
             modifier = Modifier.fillMaxWidth(),
-            shape = AILockShape.control,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = PandaOrange,
-                unfocusedBorderColor = AppBorder,
-                focusedContainerColor = AppSurface,
-                unfocusedContainerColor = AppSurface,
-            ),
-            label = { Text("앱 이름 검색") },
-            singleLine = true,
+            label = "앱 이름 검색",
         )
         AppSelectionList(
             apps = uiState.installedApps,
@@ -281,7 +280,7 @@ private fun AppSelectionList(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = AILockShape.card,
         colors = CardDefaults.cardColors(containerColor = AppSurface),
         border = BorderStroke(1.dp, AppBorder),
     ) {
@@ -307,9 +306,9 @@ private fun OnboardingAppRow(app: InstalledAppInfo, selected: Boolean, onClick: 
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .background(if (selected) AppSurfaceMuted else AppSurface)
-            .padding(14.dp),
+            .padding(AILockSpacing.itemPadding),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(AILockSpacing.iconTextGap),
     ) {
         InstalledAppIcon(app)
         Column(modifier = Modifier.weight(1f)) {
@@ -371,47 +370,6 @@ private fun OnboardingFloatingBottomAction(
 }
 
 @Composable
-private fun OnboardingBottomAction(
-    step: Int,
-    uiState: AILockUiState,
-    onNext: () -> Unit,
-    onOpenNextPermission: () -> Unit,
-    onSaveAppsAndContinue: () -> Unit,
-    onFinish: () -> Unit,
-) {
-    val profileReady = uiState.profileDraft.name.isNotBlank() &&
-        uiState.profileDraft.age != null &&
-        uiState.profileDraft.gender.isNotBlank() &&
-        uiState.profileDraft.job.isNotBlank()
-    val allPermissionsGranted = uiState.permissions.allRequiredGranted
-    val hasSelectedApps = uiState.onboardingSelectedPackages.isNotEmpty()
-
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        when (step) {
-            0 -> PrimaryButton("시작하기", onNext, modifier = Modifier.fillMaxWidth())
-            1 -> {
-                PrimaryButton(
-                    text = if (allPermissionsGranted) "다음" else "권한 설정하기",
-                    onClick = if (allPermissionsGranted) onNext else onOpenNextPermission,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            2 -> PrimaryButton("다음", onNext, enabled = profileReady, modifier = Modifier.fillMaxWidth())
-            3 -> PrimaryButton(
-                text = if (hasSelectedApps) "다음" else "앱을 선택해 주세요",
-                onClick = onSaveAppsAndContinue,
-                enabled = hasSelectedApps,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            else -> PrimaryButton("시작하기", onFinish, modifier = Modifier.fillMaxWidth())
-        }
-    }
-}
-
-@Composable
 private fun StepIndicator(currentStep: Int, totalSteps: Int) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
         repeat(totalSteps) { index ->
@@ -419,7 +377,7 @@ private fun StepIndicator(currentStep: Int, totalSteps: Int) {
                 colors = CardDefaults.cardColors(
                     containerColor = if (index < currentStep) MaterialTheme.colorScheme.outlineVariant else AppSurfaceMuted,
                 ),
-                shape = RoundedCornerShape(8.dp),
+                shape = AILockShape.pill,
                 modifier = Modifier.weight(1f).padding(vertical = 2.dp),
             ) {
                 Box(modifier = Modifier.padding(vertical = 2.dp))
