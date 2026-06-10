@@ -372,7 +372,7 @@ private fun InputScreen(
         label = "reason-sheet-height",
     )
     val pandaBottom by animateDpAsState(
-        targetValue = if (expanded) sheetHeight + 46.dp else sheetHeight - 36.dp,
+        targetValue = if (expanded) sheetHeight + 46.dp else sheetHeight + 16.dp,
         animationSpec = tween(190),
         label = "panda-peek-bottom",
     )
@@ -423,7 +423,7 @@ private fun LoadingScreen(
         )
         StatusBottomCard(
             title = "레서판다가 생각하고 있어요...",
-            body = "이유를 살펴보고 잠깐 허용해도 되는지 판단하는 중이에요.",
+            body = null,
             action = {
                 IconButton(onClick = onCancel) {
                     Icon(Icons.Default.Close, contentDescription = "취소")
@@ -446,7 +446,7 @@ private fun ResultScreen(
     val allowed = allowedTime > 0
     val message = decision?.supportMessage?.lineSequence()?.firstOrNull()?.ifBlank { null }
         ?: if (allowed) "필요한 것만 확인하고 바로 돌아와." else "지금은 멈추는 쪽이 더 좋아 보여."
-    val speech = if (allowed) "좋아, ${allowedTime}분만" else "이번엔 멈추자"
+    val speech = if (allowed) "좋아, ${allowedTime}분만" else message
 
     Box(modifier = modifier) {
         PandaPrompt(
@@ -457,11 +457,11 @@ private fun ResultScreen(
                 .padding(bottom = 216.dp),
         )
         DecisionBottomCard(
-            title = if (allowed) "${allowedTime}분 허용됐어요" else "허용하지 않았어요",
+            title = if (allowed) "${allowedTime}분 허용됐어요" else null,
             body = if (allowed) {
                 "${appName}에서 필요한 일만 끝내고 돌아와요. $message"
             } else {
-                message
+                null
             },
             primaryText = if (allowed) "앱으로 돌아가기" else "홈으로 가기",
             secondaryText = if (allowed) "이번엔 참아볼게" else "다시 말해볼게",
@@ -495,16 +495,14 @@ private fun ReasonInputCard(
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (expanded) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .width(24.dp)
-                        .height(2.dp)
-                        .clip(AILockShape.pill)
-                        .background(AppBorderStrong),
-                )
-            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(24.dp)
+                    .height(2.dp)
+                    .clip(AILockShape.pill)
+                    .background(AppBorderStrong),
+            )
             OutlinedTextField(
                 value = value,
                 onValueChange = onValueChange,
@@ -544,7 +542,7 @@ private fun ReasonInputCard(
 @Composable
 private fun StatusBottomCard(
     title: String,
-    body: String,
+    body: String?,
     action: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -574,7 +572,9 @@ private fun StatusBottomCard(
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = AppTextStrong)
-                    Text(body, style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
+                    if (!body.isNullOrBlank()) {
+                        Text(body, style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
+                    }
                 }
                 action()
             }
@@ -584,8 +584,8 @@ private fun StatusBottomCard(
 
 @Composable
 private fun DecisionBottomCard(
-    title: String,
-    body: String,
+    title: String?,
+    body: String?,
     primaryText: String,
     secondaryText: String,
     onPrimary: () -> Unit,
@@ -605,8 +605,12 @@ private fun DecisionBottomCard(
             modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppTextStrong)
-            Text(body, style = MaterialTheme.typography.bodyMedium, color = AppTextSubtle)
+            if (!title.isNullOrBlank()) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppTextStrong)
+            }
+            if (!body.isNullOrBlank()) {
+                Text(body, style = MaterialTheme.typography.bodyMedium, color = AppTextSubtle)
+            }
             PrimaryButton(primaryText, onPrimary, modifier = Modifier.fillMaxWidth())
             SecondaryButton(secondaryText, onSecondary, modifier = Modifier.fillMaxWidth())
         }

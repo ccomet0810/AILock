@@ -256,21 +256,47 @@ private fun TimerSettingSection(
     Column(verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap)) {
         Text("타이머 설정", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         AilockCard(contentPadding = PaddingValues(0.dp)) {
-            TimerReadout(
-                minutes = minutes,
-                editingPart = editingPart,
-                inputValue = inputValue,
-                onInputChange = onInputChange,
-                onInputDone = onInputDone,
-                onHoursClick = onHoursClick,
-                onMinutesClick = onMinutesClick,
-                onHoursStep = onHoursStep,
-                onMinutesStep = onMinutesStep,
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 27.dp),
-            )
+                    .padding(vertical = 22.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TimerUnitLabel("시")
+                    Box(modifier = Modifier.width(38.dp))
+                    TimerUnitLabel("분")
+                }
+                TimerReadout(
+                    minutes = minutes,
+                    editingPart = editingPart,
+                    inputValue = inputValue,
+                    onInputChange = onInputChange,
+                    onInputDone = onInputDone,
+                    onHoursClick = onHoursClick,
+                    onMinutesClick = onMinutesClick,
+                    onHoursStep = onHoursStep,
+                    onMinutesStep = onMinutesStep,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun TimerUnitLabel(text: String) {
+    Box(modifier = Modifier.width(96.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = AppTextSubtle,
+        )
     }
 }
 

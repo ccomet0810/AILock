@@ -222,13 +222,12 @@ object AILockOverlayController {
             ).apply {
                 leftMargin = 28.dp()
                 rightMargin = 28.dp()
-                bottomMargin = 52.dp()
+                bottomMargin = 96.dp()
             }
             root.addView(prompt, promptParams)
             promptStack = prompt
 
             val handle = View(context).apply {
-                visibility = View.GONE
                 background = rounded(APP_BORDER_STRONG, 1.dp(), APP_BORDER_STRONG, 0)
             }
             lateinit var updateExpanded: (Boolean) -> Unit
@@ -293,7 +292,6 @@ object AILockOverlayController {
             updateExpanded = { nextExpanded: Boolean ->
                 if (expanded != nextExpanded) {
                     expanded = nextExpanded
-                    handle.visibility = if (expanded) View.VISIBLE else View.GONE
                     input.hint = if (expanded) "왜 지금 ${remainingInputMinutes().coerceAtLeast(1)}분이 필요해?" else "레서판다에게 물어보기"
                     input.gravity = if (expanded) Gravity.TOP else Gravity.CENTER_VERTICAL
                     input.setSingleLine(!expanded)
@@ -323,7 +321,7 @@ object AILockOverlayController {
                     pandaParams.width = if (expanded) 116.dp() else 104.dp()
                     pandaParams.height = if (expanded) 116.dp() else 104.dp()
                     panda.layoutParams = pandaParams
-                    val nextBottom = if (expanded) 176.dp() else 52.dp()
+                    val nextBottom = if (expanded) 176.dp() else 96.dp()
                     val startBottom = promptParams.bottomMargin
                     promptMarginAnimator?.cancel()
                     promptMarginAnimator = ValueAnimator.ofInt(startBottom, nextBottom).apply {
@@ -479,7 +477,7 @@ object AILockOverlayController {
                 FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
                     leftMargin = 28.dp()
                     rightMargin = 28.dp()
-                    bottomMargin = 132.dp()
+                bottomMargin = 132.dp()
                 },
             )
             promptStack = prompt
@@ -506,11 +504,6 @@ object AILockOverlayController {
                             textSize = 15f
                             typeface = Typeface.DEFAULT_BOLD
                             setTextColor(APP_TEXT_STRONG)
-                        })
-                        addView(TextView(context).apply {
-                            text = "이유를 살펴보고 잠깐 허용해도 되는지 판단하는 중이에요."
-                            textSize = 12f
-                            setTextColor(APP_TEXT_SUBTLE)
                         })
                     },
                     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
@@ -557,7 +550,7 @@ object AILockOverlayController {
             val prompt = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                addView(speechCard(if (allowed) "좋아, ${allowedTime}분만" else "이번엔 멈추자"))
+                addView(speechCard(if (allowed) "좋아, ${allowedTime}분만" else message))
                 addView(pandaView(), LinearLayout.LayoutParams(if (allowed) 124.dp() else 116.dp(), if (allowed) 124.dp() else 116.dp()))
             }
             root.addView(
@@ -574,19 +567,21 @@ object AILockOverlayController {
                 orientation = LinearLayout.VERTICAL
                 setPadding(18.dp(), 18.dp(), 18.dp(), 18.dp())
                 background = rounded(APP_SURFACE_MUTED, 8.dp(), APP_BORDER, 1.dp())
-                addView(TextView(context).apply {
-                    text = if (allowed) "${allowedTime}분 허용됐어요" else "허용하지 않았어요"
-                    textSize = 18f
-                    typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(APP_TEXT_STRONG)
-                })
-                addView(TextView(context).apply {
-                    text = if (allowed) "${config.appName}에서 필요한 일만 끝내고 돌아와요. $message" else message
-                    textSize = 14f
-                    setTextColor(APP_TEXT_SUBTLE)
-                    setPadding(0, 8.dp(), 0, 0)
-                    maxLines = 4
-                })
+                if (allowed) {
+                    addView(TextView(context).apply {
+                        text = "${allowedTime}분 허용됐어요"
+                        textSize = 18f
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextColor(APP_TEXT_STRONG)
+                    })
+                    addView(TextView(context).apply {
+                        text = "${config.appName}에서 필요한 일만 끝내고 돌아와요. $message"
+                        textSize = 14f
+                        setTextColor(APP_TEXT_SUBTLE)
+                        setPadding(0, 8.dp(), 0, 0)
+                        maxLines = 4
+                    })
+                }
                 addView(
                     actionButton(if (allowed) "앱으로 돌아가기" else "홈으로 가기") {
                         if (allowed) allowAndDismiss(decision) else dismissAndHome()

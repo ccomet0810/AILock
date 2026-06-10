@@ -50,6 +50,7 @@ import com.ccomet.ailock.ui.theme.AILockSpacing
 @Composable
 fun AppPickerScreen(uiState: AILockUiState, onBack: () -> Unit, onQuery: (String) -> Unit, onSelect: (String) -> Unit, onConfirm: () -> Unit) {
     val selectedPackage = uiState.draft.packageName
+    val selectableApps = uiState.installedApps.filter { !it.isLocked || it.packageName == selectedPackage }
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
@@ -88,13 +89,13 @@ fun AppPickerScreen(uiState: AILockUiState, onBack: () -> Unit, onQuery: (String
                 item {
                     AilockCard(contentPadding = PaddingValues(0.dp)) {
                         Column {
-                            uiState.installedApps.forEachIndexed { index, app ->
+                            selectableApps.forEachIndexed { index, app ->
                                 InstalledAppRow(
                                     app = app,
                                     selected = app.packageName == selectedPackage,
                                     onClick = { onSelect(app.packageName) },
                                 )
-                                if (index != uiState.installedApps.lastIndex) {
+                                if (index != selectableApps.lastIndex) {
                                     HorizontalDivider(color = AppBorder)
                                 }
                             }
