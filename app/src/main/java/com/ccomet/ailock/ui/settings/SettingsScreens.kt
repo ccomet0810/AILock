@@ -55,6 +55,7 @@ fun SettingsScreen(
     uiState: AILockUiState,
     onProfile: () -> Unit,
     onPermissions: () -> Unit,
+    onPastUsage: () -> Unit,
     onRestartOnboarding: () -> Unit,
 ) {
     val headerMotion = rememberAILockHeaderMotionState(label = "settingsHeaderMotion")
@@ -101,6 +102,12 @@ fun SettingsScreen(
                             iconRes = R.drawable.ic_action_permissions,
                         )
                     }
+                    SecondaryButton(
+                        "과거 사용 기록",
+                        onClick = onPastUsage,
+                        modifier = Modifier.fillMaxWidth(),
+                        iconRes = R.drawable.ic_nav_records_outlined,
+                    )
                     SecondaryButton(
                         "온보딩 다시 보기",
                         onClick = onRestartOnboarding,

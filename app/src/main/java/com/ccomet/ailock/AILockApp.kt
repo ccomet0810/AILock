@@ -50,6 +50,7 @@ import com.ccomet.ailock.ui.restrictions.AppPickerScreen
 import com.ccomet.ailock.ui.restrictions.RestrictionEditScreen
 import com.ccomet.ailock.ui.restrictions.RestrictionsScreen
 import com.ccomet.ailock.ui.settings.PermissionManagementScreen
+import com.ccomet.ailock.ui.settings.PastUsageScreen
 import com.ccomet.ailock.ui.settings.ProfileEditScreen
 import com.ccomet.ailock.ui.settings.SettingsScreen
 import com.ccomet.ailock.ui.theme.AppBackground
@@ -190,6 +191,11 @@ fun AILockApp(
                             navController.navigate(Routes.PERMISSIONS)
                         }
                     },
+                    onPastUsage = {
+                        navigateAfterBottomBarHide {
+                            navController.navigate(Routes.PAST_USAGE)
+                        }
+                    },
                     onRestartOnboarding = {
                         navigateAfterBottomBarHide {
                             viewModel.restartOnboarding()
@@ -266,6 +272,12 @@ fun AILockApp(
                     onRefresh = viewModel::refreshPermissions,
                 )
             }
+            composable(Routes.PAST_USAGE) {
+                PastUsageScreen(
+                    uiState = uiState,
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
         if (currentRoute in mainRoutes) {
             AnimatedVisibility(
@@ -330,5 +342,6 @@ object Routes {
     const val APP_PICKER = "app_picker"
     const val PROFILE = "profile"
     const val PERMISSIONS = "permissions"
+    const val PAST_USAGE = "past_usage"
 }
 
