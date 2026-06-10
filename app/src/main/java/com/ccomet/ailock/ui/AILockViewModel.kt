@@ -18,6 +18,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 
+private const val LAST_ONBOARDING_STEP = 11
+private const val PROFILE_INPUT_STEP = 6
+private const val APP_SELECTION_STEP = 10
+
 class AILockViewModel(application: Application) : AndroidViewModel(application) {
     private val container = AILockContainer.get(application)
     private val repository = container.ailockRepository
@@ -90,15 +94,19 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
     fun nextOnboardingStep() {
         val currentStep = _uiState.value.onboardingStep
         _uiState.update {
-            val next = (it.onboardingStep + 1).coerceAtMost(4)
+            val next = (it.onboardingStep + 1).coerceAtMost(LAST_ONBOARDING_STEP)
             it.copy(
                 onboardingStep = next,
-                isEditingProfile = next == 2,
-                profileDraft = if (next == 2) it.profileDraft.takeUnless { draft -> draft.isBlank() } ?: it.userProfile else it.profileDraft,
-                appQuery = if (next == 3 && currentStep != 3) "" else it.appQuery,
+                isEditingProfile = next == PROFILE_INPUT_STEP,
+                profileDraft = if (next == PROFILE_INPUT_STEP) {
+                    it.profileDraft.takeUnless { draft -> draft.isBlank() } ?: it.userProfile
+                } else {
+                    it.profileDraft
+                },
+                appQuery = if (next == APP_SELECTION_STEP && currentStep != APP_SELECTION_STEP) "" else it.appQuery,
             )
         }
-        if (_uiState.value.onboardingStep == 3) reloadInstalledApps()
+        if (_uiState.value.onboardingStep == APP_SELECTION_STEP) reloadInstalledApps()
     }
 
     fun previousOnboardingStep() {
@@ -108,7 +116,7 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
     fun skipPermissionGateForDebug() {
         _uiState.update {
             it.copy(
-                onboardingStep = 3,
+                onboardingStep = APP_SELECTION_STEP,
                 isEditingProfile = false,
                 profileDraft = it.profileDraft.takeUnless { draft -> draft.isBlank() } ?: it.userProfile,
                 statusMessage = "디버그 모드로 권한 없이 계속합니다.",

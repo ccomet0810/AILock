@@ -138,6 +138,7 @@ fun AILockApp(
                     onNext = viewModel::nextOnboardingStep,
                     onPrevious = viewModel::previousOnboardingStep,
                     onProfileChange = viewModel::updateProfileDraft,
+                    onSaveProfileAndContinue = viewModel::saveProfileAndContinue,
                     onAppQuery = viewModel::updateAppQuery,
                     onToggleApp = viewModel::toggleOnboardingApp,
                     onSaveAppsAndContinue = viewModel::saveOnboardingAppsAndContinue,
