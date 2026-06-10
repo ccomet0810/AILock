@@ -1,6 +1,5 @@
 package com.ccomet.ailock.ui.home
 
-import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -116,56 +115,8 @@ private fun loadTodayScreenTimeMillis(manager: UsageStatsManager): Long {
     val zone = ZoneId.systemDefault()
     val start = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
     val end = System.currentTimeMillis()
-    val elapsedMillis = (end - start).coerceAtLeast(0L)
-    val aggregateTotalMillis = manager.queryAndAggregateUsageStats(start, end).values.sumOf { it.totalTimeInForeground }
-    val eventTotalMillis = eventTotalUsageForPeriod(manager, start, end)
-    return when {
-        aggregateTotalMillis in 1..elapsedMillis -> aggregateTotalMillis
-        eventTotalMillis > 0L -> eventTotalMillis
-        else -> 0L
-    }.coerceAtMost(elapsedMillis)
+    return manager.queryAndAggregateUsageStats(start, end).values.sumOf { it.totalTimeInForeground }
 }
-
-private fun eventTotalUsageForPeriod(manager: UsageStatsManager, startMillis: Long, endMillis: Long): Long {
-    val events = manager.queryEvents(startMillis, endMillis)
-    val event = UsageEvents.Event()
-    var totalMillis = 0L
-    var activePackage: String? = null
-    var activeStart = startMillis
-
-    while (events.hasNextEvent()) {
-        events.getNextEvent(event)
-        val packageName = event.packageName ?: continue
-        val eventTime = event.timeStamp.coerceIn(startMillis, endMillis)
-        when (event.eventType) {
-            UsageEvents.Event.ACTIVITY_RESUMED,
-            usageMoveToForegroundEvent() -> {
-                activePackage?.let { totalMillis += (eventTime - activeStart).coerceAtLeast(0L) }
-                activePackage = packageName
-                activeStart = eventTime
-            }
-
-            UsageEvents.Event.ACTIVITY_PAUSED,
-            usageMoveToBackgroundEvent() -> {
-                if (activePackage == packageName) {
-                    totalMillis += (eventTime - activeStart).coerceAtLeast(0L)
-                    activePackage = null
-                    activeStart = eventTime
-                }
-            }
-        }
-    }
-    if (activePackage != null) {
-        totalMillis += (endMillis - activeStart).coerceAtLeast(0L)
-    }
-    return totalMillis.coerceAtMost((endMillis - startMillis).coerceAtLeast(0L))
-}
-
-@Suppress("DEPRECATION")
-private fun usageMoveToForegroundEvent(): Int = UsageEvents.Event.MOVE_TO_FOREGROUND
-
-@Suppress("DEPRECATION")
-private fun usageMoveToBackgroundEvent(): Int = UsageEvents.Event.MOVE_TO_BACKGROUND
 
 private fun formatScreenTime(totalMillis: Long): String {
     val totalMinutes = (totalMillis / 60_000L).coerceAtLeast(0)
