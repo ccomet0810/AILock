@@ -652,16 +652,17 @@ private fun loadUsageSnapshot(context: Context, range: HistoryRange, anchorDate:
         HistoryRange.Day -> hourlyUsage(manager, zone, startDate, end)
         HistoryRange.Week -> dayUsage(manager, zone, startDate, safeAnchor, end)
     }
+    val aggregateApps = appUsageForPeriod(packageManager, manager, start, end)
+    val aggregateTotalMillis = aggregateApps.sumOf { it.totalTimeMillis }
     val eventApps = eventAppUsageForPeriod(packageManager, manager, start, end)
-    val fallbackApps = if (eventApps.isEmpty()) {
-        aggregateAppUsageFallback(packageManager, manager, start, end)
-    } else {
-        emptyList()
-    }
-    val apps = eventApps.ifEmpty { fallbackApps }
+    val eventTotalMillis = eventApps.sumOf { it.totalTimeMillis }
+    val periodDurationMillis = (end - start).coerceAtLeast(0L)
+    val aggregateLooksValid = aggregateTotalMillis in 1..periodDurationMillis
+    val apps = if (aggregateLooksValid || eventApps.isEmpty()) aggregateApps else eventApps
     val totalMillis = when {
-        apps.isNotEmpty() -> apps.sumOf { it.totalTimeMillis }
-        else -> bars.sumOf { it.totalTimeMillis }.coerceAtMost((end - start).coerceAtLeast(0L))
+        aggregateLooksValid -> aggregateTotalMillis
+        eventTotalMillis > 0L -> eventTotalMillis
+        else -> bars.sumOf { it.totalTimeMillis }.coerceAtMost(periodDurationMillis)
     }
     return UsageSnapshot(bars = bars, apps = apps, totalMillis = totalMillis)
 }
@@ -740,30 +741,32 @@ private fun dayUsage(
         } else {
             date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
         }
+        val aggregateTotalMillis = manager.queryAndAggregateUsageStats(start, end)
+            .values
+            .sumOf { it.totalTimeInForeground }
         val eventTotalMillis = eventTotalUsageForPeriod(manager, start, end)
         val periodDurationMillis = (end - start).coerceAtLeast(0L)
-        val totalMillis = eventTotalMillis.takeIf { it > 0L }
-            ?: aggregateTotalFallback(manager, start, end)
-            ?: 0L
+        val totalMillis = when {
+            aggregateTotalMillis in 1..periodDurationMillis -> aggregateTotalMillis
+            eventTotalMillis > 0L -> eventTotalMillis
+            else -> 0L
+        }
         UsageBar(
             label = "${date.monthValue}/${date.dayOfMonth}",
-            totalTimeMillis = totalMillis.coerceAtMost(periodDurationMillis),
+            totalTimeMillis = totalMillis,
         )
     }
 
-private fun aggregateAppUsageFallback(
+private fun appUsageForPeriod(
     packageManager: PackageManager,
     manager: UsageStatsManager,
     startMillis: Long,
     endMillis: Long,
-): List<AppUsage> {
-    val periodDurationMillis = (endMillis - startMillis).coerceAtLeast(0L)
-    if (periodDurationMillis <= 0L) return emptyList()
-
-    val items = manager.queryAndAggregateUsageStats(startMillis, endMillis)
+): List<AppUsage> =
+    manager.queryAndAggregateUsageStats(startMillis, endMillis)
         .values
         .asSequence()
-        .filter { it.totalTimeInForeground in 1..periodDurationMillis }
+        .filter { it.totalTimeInForeground > 0L }
         .map { stats ->
             AppUsage(
                 packageName = stats.packageName,
@@ -774,23 +777,6 @@ private fun aggregateAppUsageFallback(
         }
         .sortedByDescending { it.totalTimeMillis }
         .toList()
-
-    return items.takeIf { it.sumOf { item -> item.totalTimeMillis } <= periodDurationMillis }.orEmpty()
-}
-
-private fun aggregateTotalFallback(manager: UsageStatsManager, startMillis: Long, endMillis: Long): Long? {
-    val periodDurationMillis = (endMillis - startMillis).coerceAtLeast(0L)
-    if (periodDurationMillis <= 0L) return null
-
-    val totalMillis = manager.queryAndAggregateUsageStats(startMillis, endMillis)
-        .values
-        .asSequence()
-        .map { it.totalTimeInForeground }
-        .filter { it in 1..periodDurationMillis }
-        .sum()
-
-    return totalMillis.takeIf { it in 1..periodDurationMillis }
-}
 
 private fun eventAppUsageForPeriod(
     packageManager: PackageManager,
