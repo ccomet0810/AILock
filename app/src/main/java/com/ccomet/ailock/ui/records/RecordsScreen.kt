@@ -100,6 +100,7 @@ fun RecordsScreen(uiState: AILockUiState) {
     var anchorDate by remember { mutableStateOf(LocalDate.now()) }
     var bars by remember { mutableStateOf<List<UsageBar>>(emptyList()) }
     var appUsage by remember { mutableStateOf<List<AppUsage>>(emptyList()) }
+    var usageTotalMillis by remember { mutableStateOf(0L) }
     var loadedSnapshotKey by remember { mutableStateOf<Pair<HistoryRange, LocalDate>?>(null) }
     val listState = rememberLazyListState()
     val headerMotion = rememberAILockHeaderMotionState(label = "recordsHeaderMotion")
@@ -116,12 +117,12 @@ fun RecordsScreen(uiState: AILockUiState) {
     val displayedAnchorDate = loadedSnapshotKey?.second ?: anchorDate
     val hasDisplayedSnapshot = loadedSnapshotKey != null
 
-    val summary = remember(uiState.usageRecords, displayedRange, displayedAnchorDate, appUsage, bars) {
+    val summary = remember(uiState.usageRecords, displayedRange, displayedAnchorDate, appUsage, usageTotalMillis) {
         buildRecordSummary(
             records = uiState.usageRecords,
             range = displayedRange,
             anchorDate = displayedAnchorDate,
-            totalMillis = bars.sumOf { it.totalTimeMillis },
+            totalMillis = usageTotalMillis,
             topAppName = appUsage.firstOrNull()?.appName ?: "없음",
         )
     }
@@ -134,10 +135,12 @@ fun RecordsScreen(uiState: AILockUiState) {
             }
             bars = snapshot.bars
             appUsage = snapshot.apps
+            usageTotalMillis = snapshot.totalMillis
             loadedSnapshotKey = snapshotKey
         } else {
             bars = emptyList()
             appUsage = emptyList()
+            usageTotalMillis = 0L
             loadedSnapshotKey = null
         }
     }
@@ -650,7 +653,8 @@ private fun loadUsageSnapshot(context: Context, range: HistoryRange, anchorDate:
         HistoryRange.Week -> dayUsage(manager, zone, startDate, safeAnchor, end)
     }
     val apps = appUsageForPeriod(packageManager, manager, start, end)
-    return UsageSnapshot(bars = bars, apps = apps)
+    val totalMillis = apps.sumOf { it.totalTimeMillis }.takeIf { it > 0L } ?: bars.sumOf { it.totalTimeMillis }
+    return UsageSnapshot(bars = bars, apps = apps, totalMillis = totalMillis)
 }
 
 private fun hourlyUsage(manager: UsageStatsManager, zone: ZoneId, date: LocalDate, endMillis: Long): List<UsageBar> {
@@ -864,7 +868,7 @@ private enum class HistoryRange(val label: String) {
     }
 }
 
-private data class UsageSnapshot(val bars: List<UsageBar>, val apps: List<AppUsage>)
+private data class UsageSnapshot(val bars: List<UsageBar>, val apps: List<AppUsage>, val totalMillis: Long)
 
 private data class RecordSummary(
     val totalMillis: Long,
