@@ -59,6 +59,7 @@ import com.ccomet.ailock.ui.theme.AppTextSubtle
 import com.ccomet.ailock.ui.theme.PandaOrange
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -135,7 +136,7 @@ fun PastUsageScreen(
                     AilockCard(verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap)) {
                         Text("총 스크린타임", style = MaterialTheme.typography.labelLarge, color = AppTextSubtle)
                         Text(formatUsageTime(snapshot.totalMillis), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = AppTextStrong)
-                        Text(snapshot.sourceLabel, style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
+                        Text("앱 실행/종료 이벤트를 해당 날짜 안으로 잘라 계산한 값이에요.", style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
                     }
                 }
                 item {
@@ -296,7 +297,7 @@ private fun loadPastUsageSnapshot(context: Context, date: LocalDate): PastUsageS
     activePackage?.let { addClippedUsage(totals, it, activeStart, end, start, end) }
 
     val periodDuration = end - start
-    val eventApps = totals.asSequence()
+    val apps = totals.asSequence()
         .filter { (_, millis) -> millis > 0L }
         .map { (packageName, millis) ->
             PastAppUsage(
@@ -308,55 +309,11 @@ private fun loadPastUsageSnapshot(context: Context, date: LocalDate): PastUsageS
         }
         .sortedByDescending { it.totalMillis }
         .toList()
-    val apps = eventApps.ifEmpty {
-        dailyUsageStatsFallback(packageManager, manager, start, end)
-    }
-    val sourceLabel = if (eventApps.isNotEmpty()) {
-        "앱 실행/종료 이벤트를 해당 날짜 안으로 잘라 계산한 값이에요."
-    } else if (apps.isNotEmpty()) {
-        "Android 일별 사용 통계로 불러온 값이에요. 디지털웰빙의 과거 기록과 가장 가까운 공개 API 기준이에요."
-    } else {
-        "이 날짜에 Android가 AILock에 돌려준 사용 기록이 없어요."
-    }
 
     return PastUsageSnapshot(
         apps = apps,
         totalMillis = apps.sumOf { it.totalMillis }.coerceAtMost(periodDuration),
-        sourceLabel = sourceLabel,
     )
-}
-
-private fun dailyUsageStatsFallback(
-    packageManager: PackageManager,
-    manager: UsageStatsManager,
-    startMillis: Long,
-    endMillis: Long,
-): List<PastAppUsage> {
-    val periodDuration = (endMillis - startMillis).coerceAtLeast(0L)
-    if (periodDuration <= 0L) return emptyList()
-
-    return manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startMillis, endMillis)
-        .asSequence()
-        .filter { stats ->
-            stats.totalTimeInForeground in 1..periodDuration &&
-                stats.lastTimeUsed >= startMillis &&
-                stats.lastTimeUsed < endMillis
-        }
-        .groupBy { it.packageName }
-        .mapNotNull { (packageName, statsForPackage) ->
-            val totalMillis = statsForPackage.sumOf { it.totalTimeInForeground }
-                .coerceAtMost(periodDuration)
-            totalMillis.takeIf { it > 0L }?.let {
-                PastAppUsage(
-                    packageName = packageName,
-                    appName = packageManager.safeLabel(packageName),
-                    icon = packageManager.safeIcon(packageName),
-                    totalMillis = it,
-                )
-            }
-        }
-        .sortedByDescending { it.totalMillis }
-        .toList()
 }
 
 private fun addClippedUsage(
@@ -402,10 +359,9 @@ private fun LocalDate.coerceInDates(start: LocalDate, end: LocalDate): LocalDate
 private data class PastUsageSnapshot(
     val apps: List<PastAppUsage>,
     val totalMillis: Long,
-    val sourceLabel: String,
 ) {
     companion object {
-        val EMPTY = PastUsageSnapshot(emptyList(), 0L, "사용 기록 접근 권한이 필요해요.")
+        val EMPTY = PastUsageSnapshot(emptyList(), 0L)
     }
 }
 
