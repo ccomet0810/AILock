@@ -330,7 +330,7 @@ object AILockOverlayController {
                     return super.onKeyPreIme(keyCode, event)
                 }
             }.apply {
-                hint = "레서판다에게 물어보기"
+                hint = "이유를 입력해주세요"
                 setSingleLine(true)
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
                 textSize = 15f
@@ -378,7 +378,7 @@ object AILockOverlayController {
             updateExpanded = { nextExpanded: Boolean ->
                 if (expanded != nextExpanded) {
                     expanded = nextExpanded
-                    input.hint = if (expanded) "왜 지금 ${remainingInputMinutes().coerceAtLeast(1)}분이 필요해?" else "레서판다에게 물어보기"
+                    input.hint = "이유를 입력해주세요"
                     input.gravity = if (expanded) Gravity.TOP else Gravity.CENTER_VERTICAL
                     input.setSingleLine(!expanded)
                     input.minLines = if (expanded) 3 else 1

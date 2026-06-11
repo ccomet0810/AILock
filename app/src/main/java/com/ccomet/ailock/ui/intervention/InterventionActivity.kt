@@ -438,7 +438,6 @@ private fun InputScreen(
             ReasonInputCard(
                 value = value,
                 expanded = expanded,
-                remainingMinutes = remainingMinutes,
                 onValueChange = onValueChange,
                 onFocusChange = { focused = it },
                 onSubmit = onAsk,
@@ -514,7 +513,6 @@ private fun ResultScreen(
 private fun ReasonInputCard(
     value: String,
     expanded: Boolean,
-    remainingMinutes: Int,
     onValueChange: (String) -> Unit,
     onFocusChange: (Boolean) -> Unit,
     onSubmit: () -> Unit,
@@ -550,7 +548,7 @@ private fun ReasonInputCard(
                     .height(if (expanded) 124.dp else 52.dp)
                     .onFocusChanged { onFocusChange(it.isFocused) },
                 placeholder = {
-                    Text(if (expanded) "왜 지금 ${remainingMinutes.coerceAtLeast(1)}분이 필요해?" else "레서판다에게 물어보기")
+                    Text("이유를 입력해주세요")
                 },
                 trailingIcon = {
                     IconButton(onClick = if (value.isBlank()) onClose else onSubmit) {
