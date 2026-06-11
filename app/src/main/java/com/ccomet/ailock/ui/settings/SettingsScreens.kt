@@ -243,6 +243,7 @@ fun AdminSettingsScreen(
     onBack: () -> Unit,
     onRestartOnboarding: () -> Unit,
     onBackendBaseUrlSave: (String) -> Unit,
+    onBackendConnectionTest: (String) -> Unit,
 ) {
     var backendUrlInput by remember(uiState.backendBaseUrl) { mutableStateOf(uiState.backendBaseUrl) }
 

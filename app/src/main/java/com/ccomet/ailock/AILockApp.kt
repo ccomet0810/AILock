@@ -60,6 +60,11 @@ import kotlinx.coroutines.launch
 private const val BottomBarAnimationMillis = 150
 private const val NavigateAfterBottomBarHideMillis = 90L
 
+private enum class AppPickerMode {
+    StartLockTimer,
+    ConfigureHardLimit,
+}
+
 @Composable
 fun AILockApp(
     navController: NavHostController = rememberNavController(),
@@ -71,7 +76,7 @@ fun AILockApp(
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     var bottomNavHidden by remember { mutableStateOf(false) }
-    var appPickerAfterAdd by remember { mutableStateOf(false) }
+    var appPickerMode by remember { mutableStateOf<AppPickerMode?>(null) }
     val scope = rememberCoroutineScope()
 
     val notificationLauncher = rememberLauncherForActivityResult(
@@ -165,7 +170,14 @@ fun AILockApp(
                     onAdd = {
                         navigateAfterBottomBarHide {
                             viewModel.beginAddRestriction()
-                            appPickerAfterAdd = true
+                            appPickerMode = AppPickerMode.StartLockTimer
+                            navController.navigate(Routes.APP_PICKER)
+                        }
+                    },
+                    onConfigureHardLimits = {
+                        navigateAfterBottomBarHide {
+                            viewModel.beginAddRestriction()
+                            appPickerMode = AppPickerMode.ConfigureHardLimit
                             navController.navigate(Routes.APP_PICKER)
                         }
                     },
@@ -210,6 +222,7 @@ fun AILockApp(
                         }
                     },
                     onBackendBaseUrlSave = viewModel::saveBackendBaseUrl,
+                    onBackendConnectionTest = viewModel::testBackendConnection,
                 )
             }
             composable(Routes.RESTRICTION_ADD) {
@@ -239,28 +252,52 @@ fun AILockApp(
             composable(Routes.APP_PICKER) {
                 AppPickerScreen(
                     uiState = uiState,
+                    showOnlyUnsetHardLimits = appPickerMode == AppPickerMode.ConfigureHardLimit,
                     onBack = {
-                        appPickerAfterAdd = false
+                        appPickerMode = null
                         navController.popBackStack()
                     },
                     onQuery = viewModel::updateAppQuery,
                     onSelect = { packageName ->
-                        viewModel.selectApp(packageName)
-                        if (appPickerAfterAdd) {
-                            appPickerAfterAdd = false
-                            navController.navigate(Routes.RESTRICTION_ADD) {
-                                popUpTo(Routes.RESTRICTIONS)
+                        when (appPickerMode) {
+                            AppPickerMode.StartLockTimer -> {
+                                viewModel.selectAppForLockTimer(packageName) { id ->
+                                    appPickerMode = null
+                                    navController.navigate("${Routes.RESTRICTION_EDIT}/$id") {
+                                        popUpTo(Routes.RESTRICTIONS)
+                                    }
+                                }
                             }
+                            AppPickerMode.ConfigureHardLimit -> {
+                                viewModel.selectApp(packageName)
+                                appPickerMode = null
+                                navController.navigate(Routes.RESTRICTION_ADD) {
+                                    popUpTo(Routes.RESTRICTIONS)
+                                }
+                            }
+                            null -> viewModel.selectApp(packageName)
                         }
                     },
                     onConfirm = {
-                        if (appPickerAfterAdd) {
-                            appPickerAfterAdd = false
-                            navController.navigate(Routes.RESTRICTION_ADD) {
-                                popUpTo(Routes.RESTRICTIONS)
+                        when (appPickerMode) {
+                            AppPickerMode.StartLockTimer -> {
+                                val packageName = uiState.draft.packageName
+                                if (packageName.isNotBlank()) {
+                                    viewModel.selectAppForLockTimer(packageName) { id ->
+                                        appPickerMode = null
+                                        navController.navigate("${Routes.RESTRICTION_EDIT}/$id") {
+                                            popUpTo(Routes.RESTRICTIONS)
+                                        }
+                                    }
+                                }
                             }
-                        } else {
-                            navController.popBackStack()
+                            AppPickerMode.ConfigureHardLimit -> {
+                                appPickerMode = null
+                                navController.navigate(Routes.RESTRICTION_ADD) {
+                                    popUpTo(Routes.RESTRICTIONS)
+                                }
+                            }
+                            null -> navController.popBackStack()
                         }
                     },
                 )

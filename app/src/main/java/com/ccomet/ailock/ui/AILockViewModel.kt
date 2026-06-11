@@ -253,6 +253,21 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun testBackendConnection(url: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(statusMessage = "서버 연결을 확인하고 있어요.") }
+            val result = container.ollamaDecisionRepository.testBackendConnection(url)
+            _uiState.update {
+                it.copy(
+                    statusMessage = result.fold(
+                        onSuccess = { "서버 연결에 성공했어요." },
+                        onFailure = { error -> "서버 연결 실패: ${error.message ?: error::class.java.simpleName}" },
+                    ),
+                )
+            }
+        }
+    }
+
     fun beginAddRestriction() {
         _uiState.update { it.copy(draft = LockedAppDraft(), appQuery = "") }
         reloadInstalledApps()
@@ -290,6 +305,53 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
         val app = _uiState.value.installedApps.firstOrNull { it.packageName == packageName } ?: return
         _uiState.update {
             it.copy(draft = it.draft.copy(packageName = app.packageName, appName = app.appName))
+        }
+    }
+
+    fun selectAppForLockTimer(packageName: String, onReady: (Long) -> Unit) {
+        val app = _uiState.value.installedApps.firstOrNull { it.packageName == packageName } ?: return
+        val existing = _uiState.value.lockedApps.firstOrNull { it.packageName == packageName }
+        if (existing != null) {
+            _uiState.update {
+                it.copy(
+                    draft = LockedAppDraft(
+                        id = existing.id,
+                        packageName = existing.packageName,
+                        appName = existing.appName,
+                        lockReasonPreset = existing.lockReasonPreset,
+                        lockReasonCustom = existing.lockReasonCustom,
+                        restrictionType = existing.restrictionType,
+                        selectedDays = DayOfWeek.entries.toSet(),
+                        dailyLimitMinutes = existing.dailyLimitMinutes ?: 120,
+                        lockTimerMinutes = 60,
+                        lockUntilAt = existing.lockUntilAt,
+                        advancedDayLimits = emptyMap(),
+                        isAdvancedSchedule = false,
+                        createdAt = existing.createdAt,
+                    ),
+                )
+            }
+            onReady(existing.id)
+            return
+        }
+
+        val id = System.currentTimeMillis()
+        val draft = LockedAppDraft(
+            id = id,
+            packageName = app.packageName,
+            appName = app.appName,
+            dailyLimitMinutes = 120,
+            lockTimerMinutes = 60,
+        )
+        viewModelScope.launch {
+            repository.upsertLockedApp(draft.toConfig())
+            _uiState.update {
+                it.copy(
+                    draft = draft,
+                    statusMessage = "${app.appName} 기본 강경시간을 2시간으로 설정했어요.",
+                )
+            }
+            onReady(id)
         }
     }
 

@@ -97,6 +97,14 @@ class OllamaDecisionRepository(context: Context) {
         )
     }
 
+    suspend fun testBackendConnection(baseUrl: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalizedBaseUrl = normalizeBackendBaseUrl(baseUrl)
+            val api = backendApi(normalizedBaseUrl)
+            ensureDeviceRegistered(api, "$normalizedBaseUrl#$deviceId")
+        }
+    }
+
     fun fallbackPostDecision(
         session: ActiveUseSession,
         postInput: String,
@@ -115,8 +123,10 @@ class OllamaDecisionRepository(context: Context) {
         return if (normalized in ALLOW_STATUSES || (allowedTime ?: 0) > 0) "ALLOW" else "REJECT"
     }
 
-    private suspend fun backendApi(): AiLockBackendApi {
-        val baseUrl = backendBaseUrl()
+    private suspend fun backendApi(): AiLockBackendApi =
+        backendApi(backendBaseUrl())
+
+    private fun backendApi(baseUrl: String): AiLockBackendApi {
         apiCache[baseUrl]?.let { return it }
         return synchronized(apiCache) {
             apiCache[baseUrl] ?: Retrofit.Builder()
@@ -131,6 +141,10 @@ class OllamaDecisionRepository(context: Context) {
 
     private suspend fun ensureDeviceRegistered(api: AiLockBackendApi) {
         val key = "${backendBaseUrl()}#$deviceId"
+        ensureDeviceRegistered(api, key)
+    }
+
+    private suspend fun ensureDeviceRegistered(api: AiLockBackendApi, key: String) {
         synchronized(registeredDeviceKeys) {
             if (key in registeredDeviceKeys) return
         }

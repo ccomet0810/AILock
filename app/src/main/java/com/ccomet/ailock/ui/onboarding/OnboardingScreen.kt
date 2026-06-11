@@ -333,7 +333,7 @@ private fun AppSelectionStep(
     onDailyLimit: (String, Int) -> Unit,
 ) {
     val selectedPackages = uiState.onboardingSelectedPackages
-    val selectableApps = uiState.installedApps.filter { !it.isLocked || it.packageName in selectedPackages }
+    val selectableApps = uiState.installedApps
     var timerApp by remember { mutableStateOf<InstalledAppInfo?>(null) }
 
     Column(
@@ -368,8 +368,10 @@ private fun AppSelectionStep(
                             timerMinutes = uiState.onboardingAppDailyLimits[app.packageName],
                             onClick = {
                                 val wasSelected = app.packageName in selectedPackages
-                                onToggleApp(app.packageName)
-                                if (!wasSelected) {
+                                if (wasSelected) {
+                                    timerApp = app
+                                } else {
+                                    onToggleApp(app.packageName)
                                     timerApp = app
                                 }
                             },
@@ -413,8 +415,12 @@ private fun OnboardingAppRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(app.appName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                text = if (selected) "${formatTimerLabel(timerMinutes ?: 120)} 기준" else app.packageName,
-                color = AppTextSubtle,
+                text = if (selected) {
+                    "강경시간 ${formatTimerLabel(timerMinutes ?: 120)}"
+                } else {
+                    "설정하지 않음 · 기본 2시간"
+                },
+                color = if (selected) AppTextSubtle else MaterialTheme.colorScheme.error,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
