@@ -25,6 +25,7 @@ import okhttp3.OkHttpClient
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -182,8 +183,29 @@ class OllamaDecisionRepository(context: Context) {
         try {
             block()
         } catch (exception: HttpException) {
-            throw BackendRequestException(extractBackendMessage(exception), exception)
+            throw BackendRequestException(userFriendlyHttpMessage(exception), exception)
+        } catch (exception: IOException) {
+            throw BackendRequestException(
+                "서버에 연결하지 못했어요. 인터넷 연결이나 서버 상태를 확인한 뒤 다시 시도해주세요.",
+                exception,
+            )
         }
+
+    private fun userFriendlyHttpMessage(exception: HttpException): String {
+        val serverMessage = extractBackendMessage(exception)
+            .takeUnless { it.isTechnicalHttpText() }
+
+        return when (exception.code()) {
+            400 -> serverMessage ?: "요청 정보가 올바르지 않아요. 잠시 후 다시 시도해주세요."
+            401, 403 -> serverMessage ?: "지금 이 기기에서는 요청을 처리할 수 없어요. 앱을 다시 실행한 뒤 시도해주세요."
+            404 -> serverMessage ?: "서버에서 필요한 정보를 찾지 못했어요. 다시 시도해주세요."
+            408 -> serverMessage ?: "요청 시간이 너무 오래 걸렸어요. 잠시 후 다시 시도해주세요."
+            409 -> serverMessage ?: "이미 처리 중인 요청이 있어요. 잠시 후 다시 시도해주세요."
+            429 -> serverMessage ?: "요청이 한 번에 몰려서 잠시 처리할 수 없어요. 조금 있다가 다시 시도해주세요."
+            in 500..599 -> serverMessage ?: "서버에서 잠시 문제가 생겼어요. 조금 있다가 다시 시도해주세요."
+            else -> serverMessage ?: "요청을 처리하지 못했어요. 잠시 후 다시 시도해주세요."
+        }
+    }
 
     private fun extractBackendMessage(exception: HttpException): String {
         val body = exception.response()?.errorBody()?.string().orEmpty()
@@ -195,6 +217,20 @@ class OllamaDecisionRepository(context: Context) {
                 .firstNotNullOfOrNull { key -> root.stringValue(key)?.takeIf { it.isNotBlank() } }
                 ?: body
         }.getOrDefault(body)
+    }
+
+    private fun String.isTechnicalHttpText(): Boolean {
+        val normalized = trim()
+        if (normalized.isBlank()) return true
+        return normalized.equals("Bad Request", ignoreCase = true) ||
+            normalized.equals("Unauthorized", ignoreCase = true) ||
+            normalized.equals("Forbidden", ignoreCase = true) ||
+            normalized.equals("Not Found", ignoreCase = true) ||
+            normalized.equals("Conflict", ignoreCase = true) ||
+            normalized.equals("Too Many Requests", ignoreCase = true) ||
+            normalized.equals("Internal Server Error", ignoreCase = true) ||
+            normalized.startsWith("<!DOCTYPE", ignoreCase = true) ||
+            normalized.startsWith("<html", ignoreCase = true)
     }
 
     private fun JsonObject.stringValue(key: String): String? =
