@@ -63,7 +63,7 @@ fun HomeScreen(uiState: AILockUiState) {
                 ActiveLockTimerList(
                     configs = uiState.lockedApps,
                     installedAppsByPackage = installedAppsByPackage,
-                    title = "지금 작동 중인 타이머",
+                    title = "작동 중인 잠금",
                 )
             }
         }

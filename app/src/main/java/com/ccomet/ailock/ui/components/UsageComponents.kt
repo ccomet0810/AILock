@@ -137,7 +137,7 @@ fun ActiveLockTimerList(
     configs: List<LockedAppConfig>,
     installedAppsByPackage: Map<String, InstalledAppInfo>,
     modifier: Modifier = Modifier,
-    title: String = "작동 중인 잠금 타이머",
+    title: String = "작동 중인 잠금",
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val activeConfigs = configs
@@ -175,6 +175,9 @@ private fun ActiveLockTimerCard(
     now: Long,
 ) {
     val remainingMs = ((config.lockUntilAt ?: 0L) - now).coerceAtLeast(0L)
+    val startedAt = config.lockStartedAt ?: ((config.lockUntilAt ?: now) - (config.lockDurationMinutes ?: 0) * 60_000L)
+    val totalMs = ((config.lockUntilAt ?: now) - startedAt).coerceAtLeast(1L)
+    val progress = (1f - (remainingMs.toFloat() / totalMs.toFloat())).coerceIn(0f, 1f)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -201,20 +204,25 @@ private fun ActiveLockTimerCard(
                     Text(config.appName.take(1), fontWeight = FontWeight.Bold, color = AppTextStrong)
                 }
             }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(config.appName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("잠금 해제까지", style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
-            }
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = formatRemainingLockTime(remainingMs),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = AppTextStrong,
-                    maxLines = 1,
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(9.dp)
+                        .clip(AILockShape.pill),
+                    color = PandaOrange,
+                    trackColor = PandaCream,
                 )
-                StatusPill(text = "잠금 중", positive = false)
             }
+            Text(
+                text = formatRemainingLockTime(remainingMs),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = AppTextStrong,
+                maxLines = 1,
+            )
         }
     }
 }

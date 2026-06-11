@@ -323,9 +323,16 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
         val draft = _uiState.value.draft
         val id = draft.id ?: return
         val config = _uiState.value.lockedApps.firstOrNull { it.id == id } ?: return
-        val lockUntilAt = System.currentTimeMillis() + draft.lockTimerMinutes * 60_000L
+        val lockStartedAt = System.currentTimeMillis()
+        val lockUntilAt = lockStartedAt + draft.lockTimerMinutes * 60_000L
         viewModelScope.launch {
-            repository.upsertLockedApp(config.copy(lockUntilAt = lockUntilAt))
+            repository.upsertLockedApp(
+                config.copy(
+                    lockUntilAt = lockUntilAt,
+                    lockStartedAt = lockStartedAt,
+                    lockDurationMinutes = draft.lockTimerMinutes,
+                ),
+            )
             _uiState.update {
                 it.copy(
                     draft = it.draft.copy(lockUntilAt = lockUntilAt),
