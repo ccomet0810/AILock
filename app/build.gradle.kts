@@ -26,7 +26,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "AILOCK_BACKEND_BASE_URL", "\"http://168.188.128.36:8080/\"")
+        buildConfigField("String", "AILOCK_BACKEND_BASE_URL", "\"http://168.188.128.36:20251/\"")
     }
 
     signingConfigs {

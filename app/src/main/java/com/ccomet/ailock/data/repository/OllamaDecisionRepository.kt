@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
-import retrofit2.HttpException
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
@@ -149,14 +148,7 @@ class OllamaDecisionRepository(context: Context) {
             if (key in registeredDeviceKeys) return
         }
 
-        runCatching {
-            api.registerDevice(DeviceRegisterRequest(deviceId = deviceId))
-        }.onFailure { throwable ->
-            if (throwable is HttpException && throwable.code() == 404) {
-                return@onFailure
-            }
-            throw throwable
-        }
+        api.registerDevice(DeviceRegisterRequest(deviceId = deviceId))
 
         synchronized(registeredDeviceKeys) {
             registeredDeviceKeys += key
@@ -175,7 +167,8 @@ class OllamaDecisionRepository(context: Context) {
         } else {
             "http://$trimmed"
         }
-        return if (withScheme.endsWith("/")) withScheme else "$withScheme/"
+        val normalized = if (withScheme.endsWith("/")) withScheme else "$withScheme/"
+        return if (normalized in LEGACY_BACKEND_BASE_URLS) DEFAULT_BACKEND_BASE_URL else normalized
     }
 
     private val EvaluateResponse.normalizedStatus: String
@@ -194,6 +187,10 @@ class OllamaDecisionRepository(context: Context) {
     companion object {
         private val BACKEND_BASE_URL = stringPreferencesKey("backend_base_url")
         private val DEFAULT_BACKEND_BASE_URL = BuildConfig.AILOCK_BACKEND_BASE_URL
+        private val LEGACY_BACKEND_BASE_URLS = setOf(
+            "http://210.222.240.170:8080/",
+            "http://168.188.128.36:8080/",
+        )
         private const val SOURCE_BACKEND = "ailock-backend"
         private const val SOURCE_FALLBACK = "backend-fallback"
         private const val DEFAULT_POST_LOCK_MINUTES = 5

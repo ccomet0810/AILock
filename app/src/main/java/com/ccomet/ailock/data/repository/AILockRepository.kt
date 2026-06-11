@@ -162,7 +162,8 @@ class AILockRepository(private val context: Context) {
         } else {
             "http://$trimmed"
         }
-        return if (withScheme.endsWith("/")) withScheme else "$withScheme/"
+        val normalized = if (withScheme.endsWith("/")) withScheme else "$withScheme/"
+        return if (normalized in LEGACY_BACKEND_BASE_URLS) DEFAULT_BACKEND_BASE_URL else normalized
     }
 
     companion object {
@@ -173,6 +174,10 @@ class AILockRepository(private val context: Context) {
         private val WILL_POWER_SCORE = intPreferencesKey("will_power_score")
         private val BACKEND_BASE_URL = stringPreferencesKey("backend_base_url")
         private val DEFAULT_BACKEND_BASE_URL = BuildConfig.AILOCK_BACKEND_BASE_URL
+        private val LEGACY_BACKEND_BASE_URLS = setOf(
+            "http://210.222.240.170:8080/",
+            "http://168.188.128.36:8080/",
+        )
         private const val MAX_STORED_RECORDS = 500
         private const val DEFAULT_WILL_POWER_SCORE = 80
     }
