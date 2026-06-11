@@ -83,6 +83,7 @@ fun RestrictionEditScreen(
     onBack: () -> Unit,
     onPickApp: () -> Unit,
     onDailyLimit: (Int) -> Unit,
+    onLockTimer: (Int) -> Unit,
     onSave: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -91,9 +92,10 @@ fun RestrictionEditScreen(
     var timerInputValue by remember { mutableStateOf(TextFieldValue("")) }
     val draft = uiState.draft
     val selectedApp = uiState.installedApps.firstOrNull { it.packageName == draft.packageName }
+    val editableTimerMinutes = if (isEditing) draft.lockTimerMinutes else draft.dailyLimitMinutes
 
     fun beginTimerEdit(part: TimerInputPart) {
-        val text = part.valueFrom(draft.dailyLimitMinutes).toString()
+        val text = part.valueFrom(editableTimerMinutes).toString()
         timerInputValue = TextFieldValue(text = text, selection = TextRange(0, text.length))
         editingTimerPart = part
     }
@@ -107,7 +109,8 @@ fun RestrictionEditScreen(
                 selection = TextRange(cleaned.length),
             )
             if (parsed != null) {
-                onDailyLimit(part.applyTo(draft.dailyLimitMinutes, parsed))
+                val next = part.applyTo(editableTimerMinutes, parsed)
+                if (isEditing) onLockTimer(next) else onDailyLimit(next)
             }
         }
     }
@@ -154,9 +157,25 @@ fun RestrictionEditScreen(
             ) {
                 SelectedAppSection(draft, selectedApp, onPickApp)
                 if (draft.packageName.isNotBlank()) {
+                    if (isEditing) {
+                        TimerSettingSection(
+                            title = "설정된 강경시간",
+                            minutes = draft.dailyLimitMinutes,
+                            readOnly = true,
+                            editingPart = null,
+                            inputValue = timerInputValue,
+                            onInputChange = ::updateTimerInput,
+                            onInputDone = { editingTimerPart = null },
+                            onHoursClick = {},
+                            onMinutesClick = {},
+                            onHoursStep = {},
+                            onMinutesStep = {},
+                        )
+                    }
                     TimerSettingSection(
-                        minutes = draft.dailyLimitMinutes,
-                        readOnly = isEditing,
+                        title = if (isEditing) "잠금 타이머 설정" else "하루 강경시간 설정",
+                        minutes = editableTimerMinutes,
+                        readOnly = false,
                         editingPart = editingTimerPart,
                         inputValue = timerInputValue,
                         onInputChange = ::updateTimerInput,
@@ -165,17 +184,19 @@ fun RestrictionEditScreen(
                         onMinutesClick = { beginTimerEdit(TimerInputPart.MINUTES) },
                         onHoursStep = { delta ->
                             editingTimerPart = null
-                            onDailyLimit(stepTimerHours(draft.dailyLimitMinutes, delta))
+                            val next = stepTimerHours(editableTimerMinutes, delta)
+                            if (isEditing) onLockTimer(next) else onDailyLimit(next)
                         },
                         onMinutesStep = { delta ->
                             editingTimerPart = null
-                            onDailyLimit(stepTimerMinutes(draft.dailyLimitMinutes, delta))
+                            val next = stepTimerMinutes(editableTimerMinutes, delta)
+                            if (isEditing) onLockTimer(next) else onDailyLimit(next)
                         },
                     )
                 }
             }
             FloatingBottomActionButton(
-                text = if (isEditing) "저장" else "설정하기",
+                text = if (isEditing) "잠금 시작" else "설정하기",
                 onClick = onSave,
                 enabled = draft.isValid,
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -244,6 +265,7 @@ private fun SelectedAppSection(draft: LockedAppDraft, selectedApp: InstalledAppI
 
 @Composable
 private fun TimerSettingSection(
+    title: String,
     minutes: Int,
     readOnly: Boolean,
     editingPart: TimerInputPart?,
@@ -256,7 +278,7 @@ private fun TimerSettingSection(
     onMinutesStep: (Int) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap)) {
-        Text(if (readOnly) "설정된 타이머" else "타이머 설정", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         AilockCard(contentPadding = PaddingValues(0.dp)) {
             Column(
                 modifier = Modifier

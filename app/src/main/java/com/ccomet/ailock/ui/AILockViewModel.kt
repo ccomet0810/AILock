@@ -270,6 +270,8 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
                     restrictionType = config.restrictionType,
                     selectedDays = DayOfWeek.entries.toSet(),
                     dailyLimitMinutes = config.dailyLimitMinutes ?: 120,
+                    lockTimerMinutes = 60,
+                    lockUntilAt = config.lockUntilAt,
                     advancedDayLimits = emptyMap(),
                     isAdvancedSchedule = false,
                     createdAt = config.createdAt,
@@ -311,6 +313,27 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
 
     fun updateDailyLimit(minutes: Int) {
         _uiState.update { it.copy(draft = it.draft.copy(dailyLimitMinutes = minutes.coerceIn(0, 23 * 60 + 59))) }
+    }
+
+    fun updateLockTimer(minutes: Int) {
+        _uiState.update { it.copy(draft = it.draft.copy(lockTimerMinutes = minutes.coerceIn(1, 23 * 60 + 59))) }
+    }
+
+    fun startDraftLockTimer(onStarted: () -> Unit) {
+        val draft = _uiState.value.draft
+        val id = draft.id ?: return
+        val config = _uiState.value.lockedApps.firstOrNull { it.id == id } ?: return
+        val lockUntilAt = System.currentTimeMillis() + draft.lockTimerMinutes * 60_000L
+        viewModelScope.launch {
+            repository.upsertLockedApp(config.copy(lockUntilAt = lockUntilAt))
+            _uiState.update {
+                it.copy(
+                    draft = it.draft.copy(lockUntilAt = lockUntilAt),
+                    statusMessage = "${draft.appName} 잠금 타이머를 시작했어요.",
+                )
+            }
+            onStarted()
+        }
     }
 
     fun toggleAdvancedSchedule() {

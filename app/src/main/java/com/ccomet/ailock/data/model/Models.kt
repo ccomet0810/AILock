@@ -59,6 +59,7 @@ data class LockedAppConfig(
     val restrictionType: RestrictionType = RestrictionType.IMMEDIATE_LOCK,
     val selectedDays: Set<DayOfWeek> = DayOfWeek.entries.toSet(),
     val dailyLimitMinutes: Int? = null,
+    val lockUntilAt: Long? = null,
     val advancedDayLimits: Map<DayOfWeek, Int> = emptyMap(),
     val isAdvancedSchedule: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),

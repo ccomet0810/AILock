@@ -16,9 +16,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -46,7 +54,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccomet.ailock.data.model.InstalledAppInfo
@@ -446,13 +466,33 @@ private fun DialogTimerContent(
     minutes: Int,
     onDailyLimit: (Int) -> Unit,
 ) {
-    val hours = minutes / 60
-    val mins = minutes % 60
+    var editingTimerPart by remember { mutableStateOf<OnboardingTimerInputPart?>(null) }
+    var timerInputValue by remember { mutableStateOf(TextFieldValue("")) }
+
+    fun beginTimerEdit(part: OnboardingTimerInputPart) {
+        val text = part.valueFrom(minutes).toString()
+        timerInputValue = TextFieldValue(text = text, selection = TextRange(0, text.length))
+        editingTimerPart = part
+    }
+
+    fun updateTimerInput(part: OnboardingTimerInputPart, value: TextFieldValue) {
+        val cleaned = value.text.filter { it.isDigit() }.take(2)
+        val parsed = cleaned.toIntOrNull()
+        if (parsed == null || parsed in part.validRange) {
+            timerInputValue = TextFieldValue(
+                text = cleaned,
+                selection = TextRange(cleaned.length),
+            )
+            if (parsed != null) {
+                onDailyLimit(part.applyTo(minutes, parsed))
+            }
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text("하루 사용 기준 시간", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppTextStrong)
         Text("이 시간은 저장 후 수정할 수 없어요.", style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
@@ -460,29 +500,266 @@ private fun DialogTimerContent(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TimerValueColumn(label = "시간", value = hours.toString().padStart(2, '0'))
-            Text(
-                text = " : ",
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Bold,
-                color = AppTextSubtle,
-            )
-            TimerValueColumn(label = "분", value = mins.toString().padStart(2, '0'))
+            TimerUnitLabel("시간")
+            Box(modifier = Modifier.width(38.dp))
+            TimerUnitLabel("분")
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(AILockSpacing.sectionGap)) {
-            TimerStepGroup(
-                label = "시간",
-                onDecrease = { onDailyLimit(clampOnboardingTimer(minutes - 60)) },
-                onIncrease = { onDailyLimit(clampOnboardingTimer(minutes + 60)) },
+        OnboardingTimerReadout(
+            minutes = minutes,
+            editingPart = editingTimerPart,
+            inputValue = timerInputValue,
+            onInputChange = ::updateTimerInput,
+            onInputDone = { editingTimerPart = null },
+            onHoursClick = { beginTimerEdit(OnboardingTimerInputPart.HOURS) },
+            onMinutesClick = { beginTimerEdit(OnboardingTimerInputPart.MINUTES) },
+            onHoursStep = { delta ->
+                editingTimerPart = null
+                onDailyLimit(stepOnboardingTimerHours(minutes, delta))
+            },
+            onMinutesStep = { delta ->
+                editingTimerPart = null
+                onDailyLimit(stepOnboardingTimerMinutes(minutes, delta))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun OnboardingTimerReadout(
+    minutes: Int,
+    editingPart: OnboardingTimerInputPart?,
+    inputValue: TextFieldValue,
+    onInputChange: (OnboardingTimerInputPart, TextFieldValue) -> Unit,
+    onInputDone: () -> Unit,
+    onHoursClick: () -> Unit,
+    onMinutesClick: () -> Unit,
+    onHoursStep: (Int) -> Unit,
+    onMinutesStep: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val hours = minutes / 60
+    val mins = minutes % 60
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OnboardingTimerNumber(
+            part = OnboardingTimerInputPart.HOURS,
+            value = pad2(hours),
+            previousValue = pad2(wrappedOnboardingHours(hours - 1)),
+            nextValue = pad2(wrappedOnboardingHours(hours + 1)),
+            editing = editingPart == OnboardingTimerInputPart.HOURS,
+            inputValue = inputValue,
+            onInputChange = { value -> onInputChange(OnboardingTimerInputPart.HOURS, value) },
+            onInputDone = onInputDone,
+            onClick = onHoursClick,
+            onStep = onHoursStep,
+        )
+        Text(
+            text = " : ",
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = AppTextSubtle,
+        )
+        OnboardingTimerNumber(
+            part = OnboardingTimerInputPart.MINUTES,
+            value = pad2(mins),
+            previousValue = pad2(wrappedOnboardingMinutes(mins - 1)),
+            nextValue = pad2(wrappedOnboardingMinutes(mins + 1)),
+            editing = editingPart == OnboardingTimerInputPart.MINUTES,
+            inputValue = inputValue,
+            onInputChange = { value -> onInputChange(OnboardingTimerInputPart.MINUTES, value) },
+            onInputDone = onInputDone,
+            onClick = onMinutesClick,
+            onStep = onMinutesStep,
+        )
+    }
+}
+
+@Composable
+private fun OnboardingTimerNumber(
+    part: OnboardingTimerInputPart,
+    value: String,
+    previousValue: String,
+    nextValue: String,
+    editing: Boolean,
+    inputValue: TextFieldValue,
+    onInputChange: (TextFieldValue) -> Unit,
+    onInputDone: () -> Unit,
+    onClick: () -> Unit,
+    onStep: (Int) -> Unit,
+) {
+    var dragAmount by remember { mutableFloatStateOf(0f) }
+    val focusRequester = remember { FocusRequester() }
+    val itemHeightPx = with(LocalDensity.current) { OnboardingTimerWheelItemHeight.toPx() }
+    val visualOffset by animateFloatAsState(
+        targetValue = dragAmount.coerceIn(-itemHeightPx, itemHeightPx),
+        animationSpec = tween(durationMillis = 90),
+        label = "onboarding-timer-wheel-offset",
+    )
+    val dragState = rememberDraggableState { delta ->
+        dragAmount += delta
+        val steps = (dragAmount / itemHeightPx).toInt()
+        if (steps != 0) {
+            dragAmount -= steps * itemHeightPx
+            onStep(-steps)
+        }
+    }
+
+    LaunchedEffect(editing) {
+        if (editing) {
+            focusRequester.requestFocus()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .width(96.dp)
+            .height(OnboardingTimerWheelItemHeight * 3)
+            .clipToBounds()
+            .draggable(
+                state = dragState,
+                orientation = Orientation.Vertical,
+                onDragStopped = { dragAmount = 0f },
             )
-            TimerStepGroup(
-                label = "분",
-                onDecrease = { onDailyLimit(clampOnboardingTimer(minutes - 10)) },
-                onIncrease = { onDailyLimit(clampOnboardingTimer(minutes + 10)) },
-            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer { translationY = visualOffset },
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            OnboardingTimerSideValue(previousValue, modifier = Modifier.height(OnboardingTimerWheelItemHeight))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(OnboardingTimerWheelItemHeight),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (editing) {
+                    BasicTextField(
+                        value = inputValue,
+                        onValueChange = onInputChange,
+                        modifier = Modifier
+                            .width(84.dp)
+                            .focusRequester(focusRequester),
+                        textStyle = MaterialTheme.typography.displaySmall.copy(
+                            color = AppTextStrong,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Done,
+                        ),
+                        keyboardActions = KeyboardActions(onDone = { onInputDone() }),
+                        singleLine = true,
+                        decorationBox = { innerTextField ->
+                            Box(contentAlignment = Alignment.Center) {
+                                if (inputValue.text.isBlank()) {
+                                    Text(
+                                        text = part.placeholder,
+                                        textAlign = TextAlign.Center,
+                                        style = MaterialTheme.typography.displaySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AppTextSubtle.copy(alpha = 0.45f),
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        },
+                    )
+                } else {
+                    Text(
+                        text = value,
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = AppTextStrong,
+                    )
+                }
+            }
+            OnboardingTimerSideValue(nextValue, modifier = Modifier.height(OnboardingTimerWheelItemHeight))
         }
     }
 }
+
+@Composable
+private fun TimerUnitLabel(text: String) {
+    Box(modifier = Modifier.width(96.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = AppTextSubtle,
+        )
+    }
+}
+
+@Composable
+private fun OnboardingTimerSideValue(value: String, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Text(
+            text = value,
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = AppTextSubtle.copy(alpha = 0.28f),
+        )
+    }
+}
+
+private enum class OnboardingTimerInputPart(
+    val validRange: IntRange,
+    val placeholder: String,
+) {
+    HOURS(validRange = 0..23, placeholder = "HH"),
+    MINUTES(validRange = 0..59, placeholder = "MM");
+
+    fun valueFrom(totalMinutes: Int): Int = when (this) {
+        HOURS -> totalMinutes / 60
+        MINUTES -> totalMinutes % 60
+    }
+
+    fun applyTo(totalMinutes: Int, value: Int): Int = when (this) {
+        HOURS -> setOnboardingTimerHours(totalMinutes, value)
+        MINUTES -> setOnboardingTimerMinutes(totalMinutes, value)
+    }
+}
+
+private val OnboardingTimerWheelItemHeight = 62.dp
+private const val ONBOARDING_TIMER_MIN_MINUTES = 0
+private const val ONBOARDING_TIMER_MAX_MINUTES = 23 * 60 + 59
+
+private fun clampOnboardingTimer(minutes: Int): Int =
+    minutes.coerceIn(ONBOARDING_TIMER_MIN_MINUTES, ONBOARDING_TIMER_MAX_MINUTES)
+
+private fun stepOnboardingTimerHours(currentMinutes: Int, delta: Int): Int =
+    setOnboardingTimerHours(currentMinutes, (currentMinutes / 60) + delta)
+
+private fun stepOnboardingTimerMinutes(currentMinutes: Int, delta: Int): Int =
+    setOnboardingTimerMinutes(currentMinutes, (currentMinutes % 60) + delta)
+
+private fun setOnboardingTimerHours(currentMinutes: Int, hours: Int): Int {
+    val safeHours = wrappedOnboardingHours(hours)
+    return clampOnboardingTimer((safeHours * 60) + (currentMinutes % 60))
+}
+
+private fun setOnboardingTimerMinutes(currentMinutes: Int, minutes: Int): Int {
+    val safeMinutes = wrappedOnboardingMinutes(minutes)
+    return clampOnboardingTimer(((currentMinutes / 60) * 60) + safeMinutes)
+}
+
+private fun wrappedOnboardingHours(value: Int): Int = Math.floorMod(value, 24)
+
+private fun wrappedOnboardingMinutes(value: Int): Int = Math.floorMod(value, 60)
+
+private fun pad2(value: Int): String = value.toString().padStart(2, '0')
 
 @Composable
 private fun OnboardingTimerSettingSection(
@@ -562,8 +839,6 @@ private fun TimerStepButton(
         Icon(icon, contentDescription = label)
     }
 }
-
-private fun clampOnboardingTimer(minutes: Int): Int = minutes.coerceIn(0, 23 * 60 + 59)
 
 private fun formatTimerLabel(minutes: Int): String {
     val hours = minutes / 60

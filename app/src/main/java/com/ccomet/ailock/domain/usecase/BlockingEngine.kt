@@ -17,10 +17,16 @@ class BlockingEngine(
         val ignoredPackages = ignoredPackages()
         if (BlockingPolicy.isIgnored(packageName, ignoredPackages)) return BlockDecision.Allow
 
+        val usageRecords = repository.usageRecords.first()
+        val todayUsageMinutes = TimeUtils.todayRecords(usageRecords)
+            .filter { it.packageName == packageName }
+            .sumOf { it.durationMinutes }
+
         return BlockingPolicy.evaluate(
             packageName = packageName,
             lockedApps = repository.lockedApps.first(),
             today = TimeUtils.currentDayOfWeek(),
+            todayUsageMinutes = todayUsageMinutes,
             hasActiveTemporaryAllowance = repository.hasActiveTemporaryAllowance(packageName),
             ignoredPackages = ignoredPackages,
         )

@@ -219,6 +219,7 @@ fun AILockApp(
                     onBack = { navController.popBackStack() },
                     onPickApp = { navController.navigate(Routes.APP_PICKER) },
                     onDailyLimit = viewModel::updateDailyLimit,
+                    onLockTimer = viewModel::updateLockTimer,
                     onSave = { viewModel.saveDraft { navController.popBackStack(Routes.RESTRICTIONS, false) } },
                     onDelete = {},
                 )
@@ -230,7 +231,8 @@ fun AILockApp(
                     onBack = { navController.popBackStack() },
                     onPickApp = { navController.navigate(Routes.APP_PICKER) },
                     onDailyLimit = viewModel::updateDailyLimit,
-                    onSave = { viewModel.saveDraft { navController.popBackStack(Routes.RESTRICTIONS, false) } },
+                    onLockTimer = viewModel::updateLockTimer,
+                    onSave = { viewModel.startDraftLockTimer { navController.popBackStack(Routes.RESTRICTIONS, false) } },
                     onDelete = { viewModel.deleteDraft { navController.popBackStack(Routes.RESTRICTIONS, false) } },
                 )
             }
@@ -242,7 +244,15 @@ fun AILockApp(
                         navController.popBackStack()
                     },
                     onQuery = viewModel::updateAppQuery,
-                    onSelect = viewModel::selectApp,
+                    onSelect = { packageName ->
+                        viewModel.selectApp(packageName)
+                        if (appPickerAfterAdd) {
+                            appPickerAfterAdd = false
+                            navController.navigate(Routes.RESTRICTION_ADD) {
+                                popUpTo(Routes.RESTRICTIONS)
+                            }
+                        }
+                    },
                     onConfirm = {
                         if (appPickerAfterAdd) {
                             appPickerAfterAdd = false

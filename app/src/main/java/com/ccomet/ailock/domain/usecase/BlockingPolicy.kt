@@ -12,11 +12,12 @@ object BlockingPolicy {
         packageName: String,
         lockedApps: List<LockedAppConfig>,
         today: DayOfWeek,
+        todayUsageMinutes: Int,
         hasActiveTemporaryAllowance: Boolean,
         ignoredPackages: Set<String>,
+        now: Long = System.currentTimeMillis(),
     ): BlockDecision {
         if (isIgnored(packageName, ignoredPackages)) return BlockDecision.Allow
-        if (hasActiveTemporaryAllowance) return BlockDecision.Allow
 
         val config = lockedApps.firstOrNull { it.packageName == packageName }
             ?: return BlockDecision.Allow
@@ -25,9 +26,26 @@ object BlockingPolicy {
             return BlockDecision.Allow
         }
 
-        return BlockDecision.ShowIntervention(
-            config = config,
-            reason = "ai unlock judgment",
-        )
+        val dailyLimit = config.dailyLimitMinutes
+        if (dailyLimit != null && todayUsageMinutes >= dailyLimit) {
+            return BlockDecision.ShowIntervention(
+                config = config,
+                reason = "daily hard limit exceeded",
+                timeLimitExceeded = true,
+            )
+        }
+
+        val lockUntilAt = config.lockUntilAt ?: 0L
+        if (now < lockUntilAt) {
+            return BlockDecision.ShowIntervention(
+                config = config,
+                reason = "manual lock timer active",
+                timeLimitExceeded = true,
+            )
+        }
+
+        if (hasActiveTemporaryAllowance) return BlockDecision.Allow
+
+        return BlockDecision.Allow
     }
 }

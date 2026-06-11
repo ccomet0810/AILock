@@ -193,9 +193,55 @@ object AILockOverlayController {
                 }
                 start()
             }
-            renderInput(animate = true)
+            if (timeLimitExceeded) {
+                renderHardBlock()
+            } else {
+                renderInput(animate = true)
+            }
             installKeyboardFollower()
             return root
+        }
+
+        private fun renderHardBlock() {
+            root.removeAllViews()
+            bottomStack = null
+            promptStack = null
+            onKeyboardShowStarted = null
+            onKeyboardDismissStarted = null
+
+            val prompt = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                addView(speechCard("지금은 사용할 수 없어", "${config.appName}의 제한 시간이 적용 중이야."))
+                addView(pandaView(), LinearLayout.LayoutParams(116.dp(), 116.dp()))
+            }
+            root.addView(
+                prompt,
+                FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+                    leftMargin = 28.dp()
+                    rightMargin = 28.dp()
+                    bottomMargin = 188.dp()
+                },
+            )
+            promptStack = prompt
+
+            val panel = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(18.dp(), 18.dp(), 18.dp(), 18.dp())
+                background = rounded(APP_SURFACE_MUTED, 8.dp(), APP_BORDER, 1.dp())
+                addView(
+                    actionButton("홈으로 가기") { dismissAndHome() },
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 52.dp()),
+                )
+            }
+            val stack = FrameLayout(context).apply {
+                setPadding(22.dp(), 0, 22.dp(), 22.dp())
+                addView(panel, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+            }
+            bottomStack = stack
+            root.addView(stack, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+            stack.translationY = PANEL_ENTER_OFFSET.dp().toFloat()
+            stack.animate().translationY(0f).setDuration(150).setInterpolator(DecelerateInterpolator()).start()
         }
 
         private fun renderInput(animate: Boolean) {
