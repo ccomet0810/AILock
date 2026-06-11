@@ -23,8 +23,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -34,8 +32,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +53,7 @@ import com.ccomet.ailock.ui.components.AilockCard
 import com.ccomet.ailock.ui.components.AilockOutlinedTextField
 import com.ccomet.ailock.ui.components.FloatingBottomActionButton
 import com.ccomet.ailock.ui.components.PermissionCards
+import com.ccomet.ailock.ui.components.PrimaryButton
 import com.ccomet.ailock.ui.components.SecondaryButton
 import com.ccomet.ailock.ui.components.StickyCollapsingScreenHeader
 import com.ccomet.ailock.ui.components.rememberAILockHeaderMotionState
@@ -62,6 +62,8 @@ import com.ccomet.ailock.ui.theme.AILockShape
 import com.ccomet.ailock.ui.theme.AILockSpacing
 import com.ccomet.ailock.ui.theme.AppBorder
 import com.ccomet.ailock.ui.theme.AppSurface
+import com.ccomet.ailock.ui.theme.AppTextStrong
+import com.ccomet.ailock.ui.theme.AppTextSubtle
 import com.ccomet.ailock.ui.theme.PandaOrange
 
 private const val CREATOR_PASSWORD = "0514"
@@ -183,12 +185,17 @@ private fun CreatorAccessDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text("만든이") },
-        text = {
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        AilockCard(
+            modifier = Modifier.padding(horizontal = AILockSpacing.screenHorizontal),
+            verticalArrangement = Arrangement.spacedBy(AILockSpacing.iconTextGap),
+        ) {
+            Text("만든이", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppTextStrong)
+            Text("CNU 서민규, 최혜성, 허민경", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = AppTextSubtle)
             Column(verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap)) {
-                Text("CNU 서민규, 최혜성, 허민경", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = password,
                     onValueChange = onPasswordChange,
@@ -213,18 +220,20 @@ private fun CreatorAccessDialog(
                     )
                 }
             }
-        },
-        confirmButton = {
-            Button(onClick = onConfirm) {
-                Text("확인")
+            Row(horizontalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap)) {
+                SecondaryButton(
+                    text = "닫기",
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                )
+                PrimaryButton(
+                    text = "확인",
+                    onClick = onConfirm,
+                    modifier = Modifier.weight(1f),
+                )
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("닫기")
-            }
-        },
-    )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -287,12 +296,11 @@ fun AdminSettingsScreen(
                         unfocusedContainerColor = AppSurface,
                     ),
                 )
-                Button(
+                PrimaryButton(
+                    text = "저장",
                     onClick = { onBackendBaseUrlSave(backendUrlInput) },
                     modifier = Modifier.align(Alignment.End),
-                ) {
-                    Text("저장")
-                }
+                )
             }
         }
     }

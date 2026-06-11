@@ -30,15 +30,15 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,7 +59,9 @@ import com.ccomet.ailock.ui.components.FloatingBottomActionButton
 import com.ccomet.ailock.ui.components.InstalledAppIcon
 import com.ccomet.ailock.ui.components.PandaSpeechBubble
 import com.ccomet.ailock.ui.components.PermissionCards
+import com.ccomet.ailock.ui.components.PrimaryButton
 import com.ccomet.ailock.ui.components.RedPandaMascot
+import com.ccomet.ailock.ui.components.SecondaryButton
 import com.ccomet.ailock.ui.components.SpeechBubbleCard
 import com.ccomet.ailock.ui.theme.AppBorder
 import com.ccomet.ailock.ui.theme.AppSurface
@@ -410,21 +412,76 @@ private fun AppTimerDialog(
     onDailyLimit: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text(appName, fontWeight = FontWeight.Bold) },
-        text = {
-            OnboardingTimerSettingSection(
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        AilockCard(
+            modifier = Modifier.padding(horizontal = AILockSpacing.screenHorizontal),
+            verticalArrangement = Arrangement.spacedBy(AILockSpacing.iconTextGap),
+        ) {
+            Text(appName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppTextStrong)
+            DialogTimerContent(
                 minutes = minutes,
                 onDailyLimit = onDailyLimit,
             )
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("설정 완료")
+            Row(horizontalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap)) {
+                SecondaryButton(
+                    text = "취소",
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                )
+                PrimaryButton(
+                    text = "설정 완료",
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                )
             }
-        },
-    )
+        }
+    }
+}
+
+@Composable
+private fun DialogTimerContent(
+    minutes: Int,
+    onDailyLimit: (Int) -> Unit,
+) {
+    val hours = minutes / 60
+    val mins = minutes % 60
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap),
+    ) {
+        Text("하루 사용 기준 시간", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppTextStrong)
+        Text("이 시간은 저장 후 수정할 수 없어요.", style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TimerValueColumn(label = "시", value = hours.toString().padStart(2, '0'))
+            Text(
+                text = " : ",
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
+                color = AppTextSubtle,
+            )
+            TimerValueColumn(label = "분", value = mins.toString().padStart(2, '0'))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(AILockSpacing.sectionGap)) {
+            TimerStepGroup(
+                label = "시",
+                onDecrease = { onDailyLimit(clampOnboardingTimer(minutes - 60)) },
+                onIncrease = { onDailyLimit(clampOnboardingTimer(minutes + 60)) },
+            )
+            TimerStepGroup(
+                label = "분",
+                onDecrease = { onDailyLimit(clampOnboardingTimer(minutes - 10)) },
+                onIncrease = { onDailyLimit(clampOnboardingTimer(minutes + 10)) },
+            )
+        }
+    }
 }
 
 @Composable
