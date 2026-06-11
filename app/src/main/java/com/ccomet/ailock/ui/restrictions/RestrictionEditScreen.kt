@@ -156,7 +156,7 @@ fun RestrictionEditScreen(
                 if (draft.packageName.isNotBlank()) {
                     TimerSettingSection(
                         minutes = draft.dailyLimitMinutes,
-                        readOnly = true,
+                        readOnly = isEditing,
                         editingPart = editingTimerPart,
                         inputValue = timerInputValue,
                         onInputChange = ::updateTimerInput,

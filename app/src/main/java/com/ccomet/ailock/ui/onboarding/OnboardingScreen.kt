@@ -30,14 +30,20 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -87,7 +93,7 @@ fun OnboardingScreen(
     onSaveProfileAndContinue: () -> Unit,
     onAppQuery: (String) -> Unit,
     onToggleApp: (String) -> Unit,
-    onDailyLimit: (Int) -> Unit,
+    onDailyLimit: (String, Int) -> Unit,
     onSaveAppsAndContinue: () -> Unit,
     onFinish: () -> Unit,
 ) {
@@ -302,10 +308,11 @@ private fun AppSelectionStep(
     uiState: AILockUiState,
     onQuery: (String) -> Unit,
     onToggleApp: (String) -> Unit,
-    onDailyLimit: (Int) -> Unit,
+    onDailyLimit: (String, Int) -> Unit,
 ) {
     val selectedPackages = uiState.onboardingSelectedPackages
     val selectableApps = uiState.installedApps.filter { !it.isLocked || it.packageName in selectedPackages }
+    var timerApp by remember { mutableStateOf<InstalledAppInfo?>(null) }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -336,7 +343,14 @@ private fun AppSelectionStep(
                         OnboardingAppRow(
                             app = app,
                             selected = app.packageName in selectedPackages,
-                            onClick = { onToggleApp(app.packageName) },
+                            timerMinutes = uiState.onboardingAppDailyLimits[app.packageName],
+                            onClick = {
+                                val wasSelected = app.packageName in selectedPackages
+                                onToggleApp(app.packageName)
+                                if (!wasSelected) {
+                                    timerApp = app
+                                }
+                            },
                         )
                         if (index != selectableApps.take(24).lastIndex) {
                             HorizontalDivider(color = AppBorder)
@@ -345,12 +359,15 @@ private fun AppSelectionStep(
                 }
             }
         }
-        if (selectedPackages.isNotEmpty()) {
-            OnboardingTimerSettingSection(
-                minutes = uiState.onboardingDailyLimitMinutes,
-                onDailyLimit = onDailyLimit,
-            )
-        }
+    }
+
+    timerApp?.let { app ->
+        AppTimerDialog(
+            appName = app.appName,
+            minutes = uiState.onboardingAppDailyLimits[app.packageName] ?: 120,
+            onDailyLimit = { minutes -> onDailyLimit(app.packageName, minutes) },
+            onDismiss = { timerApp = null },
+        )
     }
 }
 
@@ -358,6 +375,7 @@ private fun AppSelectionStep(
 private fun OnboardingAppRow(
     app: InstalledAppInfo,
     selected: Boolean,
+    timerMinutes: Int?,
     onClick: () -> Unit,
 ) {
     Row(
@@ -372,12 +390,41 @@ private fun OnboardingAppRow(
         InstalledAppIcon(app)
         Column(modifier = Modifier.weight(1f)) {
             Text(app.appName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(app.packageName, color = AppTextSubtle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                text = if (selected) "${formatTimerLabel(timerMinutes ?: 120)} 기준" else app.packageName,
+                color = AppTextSubtle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         if (selected) {
             Icon(Icons.Default.Check, contentDescription = "선택됨", tint = MaterialTheme.colorScheme.primary)
         }
     }
+}
+
+@Composable
+private fun AppTimerDialog(
+    appName: String,
+    minutes: Int,
+    onDailyLimit: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(appName, fontWeight = FontWeight.Bold) },
+        text = {
+            OnboardingTimerSettingSection(
+                minutes = minutes,
+                onDailyLimit = onDailyLimit,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("설정 완료")
+            }
+        },
+    )
 }
 
 @Composable
@@ -460,6 +507,16 @@ private fun TimerStepButton(
 }
 
 private fun clampOnboardingTimer(minutes: Int): Int = minutes.coerceIn(0, 23 * 60 + 59)
+
+private fun formatTimerLabel(minutes: Int): String {
+    val hours = minutes / 60
+    val mins = minutes % 60
+    return when {
+        hours > 0 && mins > 0 -> "${hours}시간 ${mins}분"
+        hours > 0 -> "${hours}시간"
+        else -> "${mins}분"
+    }
+}
 
 @Composable
 private fun StepIndicator(currentStep: Int, totalSteps: Int) {

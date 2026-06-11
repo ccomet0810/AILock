@@ -22,6 +22,7 @@ data class AILockUiState(
     val onboardingSelectedPackages: Set<String> = emptySet(),
     val onboardingSelectedApps: List<InstalledAppInfo> = emptyList(),
     val onboardingDailyLimitMinutes: Int = 120,
+    val onboardingAppDailyLimits: Map<String, Int> = emptyMap(),
     val draft: LockedAppDraft = LockedAppDraft(),
     val willPowerScore: Int = 80,
     val backendBaseUrl: String = "",

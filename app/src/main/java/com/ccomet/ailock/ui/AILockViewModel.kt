@@ -163,11 +163,13 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
                 it.copy(
                     onboardingSelectedPackages = current - packageName,
                     onboardingSelectedApps = it.onboardingSelectedApps.filterNot { selected -> selected.packageName == packageName },
+                    onboardingAppDailyLimits = it.onboardingAppDailyLimits - packageName,
                 )
             } else {
                 it.copy(
                     onboardingSelectedPackages = current + packageName,
                     onboardingSelectedApps = it.onboardingSelectedApps + app,
+                    onboardingAppDailyLimits = it.onboardingAppDailyLimits + (packageName to 120),
                 )
             }
         }
@@ -176,7 +178,6 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
     fun saveOnboardingAppsAndContinue() {
         val snapshot = _uiState.value
         val selectedApps = snapshot.onboardingSelectedApps
-        val dailyLimitMinutes = snapshot.onboardingDailyLimitMinutes
         if (selectedApps.isEmpty()) {
             _uiState.update { it.copy(statusMessage = "관리할 앱을 하나 이상 골라주세요.") }
             return
@@ -188,7 +189,7 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
                         id = System.currentTimeMillis() + index,
                         packageName = app.packageName,
                         appName = app.appName,
-                        dailyLimitMinutes = dailyLimitMinutes,
+                        dailyLimitMinutes = snapshot.onboardingAppDailyLimits[app.packageName] ?: 120,
                     ).toConfig(),
                 )
             }
@@ -196,6 +197,7 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
                 it.copy(
                     onboardingSelectedPackages = emptySet(),
                     onboardingSelectedApps = emptyList(),
+                    onboardingAppDailyLimits = emptyMap(),
                     appQuery = "",
                     statusMessage = "${selectedApps.joinToString(", ") { app -> app.appName }} 제한을 저장했어요.",
                 )
@@ -206,6 +208,14 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
 
     fun updateOnboardingDailyLimit(minutes: Int) {
         _uiState.update { it.copy(onboardingDailyLimitMinutes = minutes.coerceIn(0, 23 * 60 + 59)) }
+    }
+
+    fun updateOnboardingAppDailyLimit(packageName: String, minutes: Int) {
+        _uiState.update {
+            it.copy(
+                onboardingAppDailyLimits = it.onboardingAppDailyLimits + (packageName to minutes.coerceIn(0, 23 * 60 + 59)),
+            )
+        }
     }
 
     fun restartOnboarding() {

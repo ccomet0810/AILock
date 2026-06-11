@@ -142,7 +142,7 @@ fun AILockApp(
                     onSaveProfileAndContinue = viewModel::saveProfileAndContinue,
                     onAppQuery = viewModel::updateAppQuery,
                     onToggleApp = viewModel::toggleOnboardingApp,
-                    onDailyLimit = viewModel::updateOnboardingDailyLimit,
+                    onDailyLimit = viewModel::updateOnboardingAppDailyLimit,
                     onSaveAppsAndContinue = viewModel::saveOnboardingAppsAndContinue,
                     onFinish = {
                         viewModel.saveProfileAndFinish()
