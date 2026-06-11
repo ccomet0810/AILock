@@ -18,6 +18,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,6 +43,7 @@ import com.ccomet.ailock.ui.theme.PandaOrange
 import com.ccomet.ailock.ui.theme.SoftGreenContainer
 import com.ccomet.ailock.ui.theme.SoftRedContainer
 import com.ccomet.ailock.util.TimeUtils
+import kotlinx.coroutines.delay
 
 
 @Composable
@@ -123,6 +129,96 @@ fun LockedAppCard(
                 positive = remainingMinutes > 0,
             )
         }
+    }
+}
+
+@Composable
+fun ActiveLockTimerList(
+    configs: List<LockedAppConfig>,
+    installedAppsByPackage: Map<String, InstalledAppInfo>,
+    modifier: Modifier = Modifier,
+    title: String = "작동 중인 잠금 타이머",
+) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val activeConfigs = configs
+        .filter { (it.lockUntilAt ?: 0L) > now }
+        .sortedBy { it.lockUntilAt ?: Long.MAX_VALUE }
+
+    LaunchedEffect(activeConfigs.map { it.packageName to it.lockUntilAt }) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1_000L)
+        }
+    }
+
+    if (activeConfigs.isEmpty()) return
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppTextStrong)
+        activeConfigs.forEach { config ->
+            ActiveLockTimerCard(
+                config = config,
+                appInfo = installedAppsByPackage[config.packageName],
+                now = now,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ActiveLockTimerCard(
+    config: LockedAppConfig,
+    appInfo: InstalledAppInfo?,
+    now: Long,
+) {
+    val remainingMs = ((config.lockUntilAt ?: 0L) - now).coerceAtLeast(0L)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = AILockShape.card,
+        colors = CardDefaults.cardColors(containerColor = AppSurface),
+        border = BorderStroke(1.dp, AppBorder),
+    ) {
+        Row(
+            modifier = Modifier.padding(AILockSpacing.itemPadding),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AILockSpacing.iconTextGap),
+        ) {
+            if (appInfo != null) {
+                InstalledAppIcon(appInfo, size = 48.dp)
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(AILockShape.card)
+                        .background(AppSurfaceMuted)
+                        .border(1.dp, AppBorder, AILockShape.card),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(config.appName.take(1), fontWeight = FontWeight.Bold, color = AppTextStrong)
+                }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(config.appName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("잠금 해제까지 ${formatRemainingLockTime(remainingMs)}", style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
+            }
+            StatusPill(text = "잠금 중", positive = false)
+        }
+    }
+}
+
+private fun formatRemainingLockTime(remainingMs: Long): String {
+    val totalSeconds = (remainingMs / 1_000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3_600L
+    val minutes = (totalSeconds % 3_600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0) {
+        "%02d시간 %02d분 %02d초".format(hours, minutes, seconds)
+    } else {
+        "%02d분 %02d초".format(minutes, seconds)
     }
 }
 

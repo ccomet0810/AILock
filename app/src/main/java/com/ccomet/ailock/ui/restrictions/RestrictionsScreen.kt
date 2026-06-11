@@ -61,6 +61,7 @@ import com.ccomet.ailock.data.model.InstalledAppInfo
 import com.ccomet.ailock.data.model.LockedAppConfig
 import com.ccomet.ailock.data.model.PandaEmotion
 import com.ccomet.ailock.ui.AILockUiState
+import com.ccomet.ailock.ui.components.ActiveLockTimerList
 import com.ccomet.ailock.ui.components.AilockCard
 import com.ccomet.ailock.ui.components.FloatingBottomActionButton
 import com.ccomet.ailock.ui.components.InstalledAppIcon
@@ -171,6 +172,13 @@ fun RestrictionsScreen(
                     item {
                         AddRestrictionRow(
                             onClick = onAdd,
+                            modifier = Modifier.padding(horizontal = AILockSpacing.screenHorizontal),
+                        )
+                    }
+                    item {
+                        ActiveLockTimerList(
+                            configs = uiState.lockedApps,
+                            installedAppsByPackage = installedAppsByPackage,
                             modifier = Modifier.padding(horizontal = AILockSpacing.screenHorizontal),
                         )
                     }
