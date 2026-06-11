@@ -460,7 +460,7 @@ private fun DialogTimerContent(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TimerValueColumn(label = "시", value = hours.toString().padStart(2, '0'))
+            TimerValueColumn(label = "시간", value = hours.toString().padStart(2, '0'))
             Text(
                 text = " : ",
                 style = MaterialTheme.typography.displaySmall,
@@ -471,7 +471,7 @@ private fun DialogTimerContent(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(AILockSpacing.sectionGap)) {
             TimerStepGroup(
-                label = "시",
+                label = "시간",
                 onDecrease = { onDailyLimit(clampOnboardingTimer(minutes - 60)) },
                 onIncrease = { onDailyLimit(clampOnboardingTimer(minutes + 60)) },
             )

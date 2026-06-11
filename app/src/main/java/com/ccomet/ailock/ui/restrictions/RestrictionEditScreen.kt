@@ -256,7 +256,7 @@ private fun TimerSettingSection(
     onMinutesStep: (Int) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap)) {
-        Text("타이머 설정", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(if (readOnly) "설정된 타이머" else "타이머 설정", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         AilockCard(contentPadding = PaddingValues(0.dp)) {
             Column(
                 modifier = Modifier
@@ -265,20 +265,20 @@ private fun TimerSettingSection(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TimerUnitLabel("시")
-                    Box(modifier = Modifier.width(38.dp))
-                    TimerUnitLabel("분")
-                }
                 if (readOnly) {
-                    TimerStaticReadout(
+                    StaticTimerText(
                         minutes = minutes,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 } else {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TimerUnitLabel("시간")
+                        Box(modifier = Modifier.width(38.dp))
+                        TimerUnitLabel("분")
+                    }
                     TimerReadout(
                         minutes = minutes,
                         editingPart = editingPart,
@@ -328,6 +328,21 @@ private fun TimerStaticReadout(
             color = AppTextStrong,
         )
     }
+}
+
+@Composable
+private fun StaticTimerText(
+    minutes: Int,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = "%02d시간 %02d분".format(minutes / 60, minutes % 60),
+        modifier = modifier,
+        textAlign = TextAlign.Center,
+        style = MaterialTheme.typography.displaySmall,
+        fontWeight = FontWeight.Bold,
+        color = AppTextStrong,
+    )
 }
 
 @Composable
