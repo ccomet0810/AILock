@@ -348,7 +348,7 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update {
                 it.copy(
                     draft = draft,
-                    statusMessage = "${app.appName} 기본 강경시간을 2시간으로 설정했어요.",
+                    statusMessage = "${app.appName} 기본 하루 최대 시간을 2시간으로 설정했어요.",
                 )
             }
             onReady(id)

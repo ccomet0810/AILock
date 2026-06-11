@@ -297,6 +297,11 @@ fun AdminSettingsScreen(
                         unfocusedContainerColor = AppSurface,
                     ),
                 )
+                SecondaryButton(
+                    text = "연결 테스트",
+                    onClick = { onBackendConnectionTest(backendUrlInput) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 PrimaryButton(
                     text = "저장",
                     onClick = { onBackendBaseUrlSave(backendUrlInput) },

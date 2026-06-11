@@ -67,7 +67,7 @@ fun AppPickerScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text(if (showOnlyUnsetHardLimits) "강경시간 설정" else "앱 선택", fontWeight = FontWeight.Bold) },
+                title = { Text(if (showOnlyUnsetHardLimits) "하루 최대 시간 설정" else "앱 선택", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 navigationIcon = {
                     IconButton(onBack) {
@@ -156,7 +156,7 @@ private fun InstalledAppRow(
                 text = if (hardLimitMinutes == null) {
                     "설정하지 않음 · 기본 2시간"
                 } else {
-                    "강경시간 ${formatTimerLabel(hardLimitMinutes)}"
+                    "하루 최대 시간 ${formatTimerLabel(hardLimitMinutes)}"
                 },
                 color = if (hardLimitMinutes == null) MaterialTheme.colorScheme.error else AppTextSubtle,
                 maxLines = 1,

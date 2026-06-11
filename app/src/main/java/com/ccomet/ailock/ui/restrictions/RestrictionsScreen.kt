@@ -112,7 +112,7 @@ fun RestrictionsScreen(
                             contentAlignment = Alignment.Center,
                         ) {
                             PandaSpeechBubble(
-                                "아직 설정된 강경시간이 없어.\n위 버튼에서 앱을 골라 기본 2시간으로 시작해볼까?",
+                                "아직 설정된 하루 최대 시간이 없어.\n위 버튼에서 앱을 골라 기본 2시간으로 시작해볼까?",
                                 emotion = PandaEmotion.ENCOURAGING,
                             )
                         }
@@ -121,14 +121,14 @@ fun RestrictionsScreen(
             }
             StickyCollapsingScreenHeader(
                 title = "제한",
-                subtitle = "잠금 타이머를 시작하거나 강경시간을 설정할 수 있어요.",
+                subtitle = "잠금 타이머를 시작하거나 하루 최대 시간을 설정할 수 있어요.",
                 collapseFraction = headerMotion.collapseFraction,
                 modifier = Modifier.align(Alignment.TopCenter),
                 actions = {
                     IconButton(onClick = onConfigureHardLimits) {
                         Icon(
                             imageVector = Icons.Default.Settings,
-                            contentDescription = "강경시간 제한 설정",
+                            contentDescription = "하루 최대 시간 설정",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }

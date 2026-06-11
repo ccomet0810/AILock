@@ -15,6 +15,7 @@ class BlockingPolicyTest {
             packageName = "",
             lockedApps = listOf(lockedApp()),
             today = DayOfWeek.MONDAY,
+            todayUsageMinutes = 0,
             hasActiveTemporaryAllowance = false,
             ignoredPackages = emptySet(),
         )
@@ -28,6 +29,7 @@ class BlockingPolicyTest {
             packageName = "com.android.settings",
             lockedApps = listOf(lockedApp(packageName = "com.android.settings")),
             today = DayOfWeek.MONDAY,
+            todayUsageMinutes = 0,
             hasActiveTemporaryAllowance = false,
             ignoredPackages = setOf("com.android.settings"),
         )
@@ -41,6 +43,7 @@ class BlockingPolicyTest {
             packageName = "com.example.social",
             lockedApps = listOf(lockedApp()),
             today = DayOfWeek.MONDAY,
+            todayUsageMinutes = 0,
             hasActiveTemporaryAllowance = true,
             ignoredPackages = emptySet(),
         )
@@ -54,6 +57,7 @@ class BlockingPolicyTest {
             packageName = "com.example.browser",
             lockedApps = listOf(lockedApp()),
             today = DayOfWeek.MONDAY,
+            todayUsageMinutes = 0,
             hasActiveTemporaryAllowance = false,
             ignoredPackages = emptySet(),
         )
@@ -67,6 +71,7 @@ class BlockingPolicyTest {
             packageName = "com.example.social",
             lockedApps = listOf(lockedApp(selectedDays = setOf(DayOfWeek.TUESDAY))),
             today = DayOfWeek.MONDAY,
+            todayUsageMinutes = 0,
             hasActiveTemporaryAllowance = false,
             ignoredPackages = emptySet(),
         )
@@ -75,13 +80,30 @@ class BlockingPolicyTest {
     }
 
     @Test
-    fun `locked app on active day shows intervention`() {
+    fun `locked app on active day without active lock is allowed`() {
         val config = lockedApp(selectedDays = setOf(DayOfWeek.MONDAY))
 
         val decision = BlockingPolicy.evaluate(
             packageName = "com.example.social",
             lockedApps = listOf(config),
             today = DayOfWeek.MONDAY,
+            todayUsageMinutes = 0,
+            hasActiveTemporaryAllowance = false,
+            ignoredPackages = emptySet(),
+        )
+
+        assertSame(BlockDecision.Allow, decision)
+    }
+
+    @Test
+    fun `locked app over daily limit shows intervention`() {
+        val config = lockedApp(selectedDays = setOf(DayOfWeek.MONDAY), dailyLimitMinutes = 30)
+
+        val decision = BlockingPolicy.evaluate(
+            packageName = "com.example.social",
+            lockedApps = listOf(config),
+            today = DayOfWeek.MONDAY,
+            todayUsageMinutes = 30,
             hasActiveTemporaryAllowance = false,
             ignoredPackages = emptySet(),
         )
@@ -89,15 +111,17 @@ class BlockingPolicyTest {
         assertTrue(decision is BlockDecision.ShowIntervention)
         val intervention = decision as BlockDecision.ShowIntervention
         assertEquals(config, intervention.config)
-        assertEquals("ai unlock judgment", intervention.reason)
+        assertEquals("daily hard limit exceeded", intervention.reason)
     }
 
     private fun lockedApp(
         packageName: String = "com.example.social",
         selectedDays: Set<DayOfWeek> = DayOfWeek.entries.toSet(),
+        dailyLimitMinutes: Int? = null,
     ): LockedAppConfig = LockedAppConfig(
         packageName = packageName,
         appName = "Social",
         selectedDays = selectedDays,
+        dailyLimitMinutes = dailyLimitMinutes,
     )
 }

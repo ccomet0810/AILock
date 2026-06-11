@@ -416,7 +416,7 @@ private fun OnboardingAppRow(
             Text(app.appName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 text = if (selected) {
-                    "강경시간 ${formatTimerLabel(timerMinutes ?: 120)}"
+                    "하루 최대 시간 ${formatTimerLabel(timerMinutes ?: 120)}"
                 } else {
                     "설정하지 않음 · 기본 2시간"
                 },

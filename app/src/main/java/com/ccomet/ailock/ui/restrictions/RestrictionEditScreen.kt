@@ -159,7 +159,7 @@ fun RestrictionEditScreen(
                 if (draft.packageName.isNotBlank()) {
                     if (isEditing) {
                         TimerSettingSection(
-                            title = "설정된 강경시간",
+                            title = "설정된 하루 최대 시간",
                             minutes = draft.dailyLimitMinutes,
                             readOnly = true,
                             editingPart = null,
@@ -173,7 +173,7 @@ fun RestrictionEditScreen(
                         )
                     }
                     TimerSettingSection(
-                        title = if (isEditing) "잠금 타이머 설정" else "하루 강경시간 설정",
+                        title = if (isEditing) "잠금 타이머 설정" else "하루 최대 시간 설정",
                         minutes = editableTimerMinutes,
                         readOnly = false,
                         editingPart = editingTimerPart,
