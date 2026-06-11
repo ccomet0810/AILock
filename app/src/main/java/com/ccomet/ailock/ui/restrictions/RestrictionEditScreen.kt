@@ -156,6 +156,7 @@ fun RestrictionEditScreen(
                 if (draft.packageName.isNotBlank()) {
                     TimerSettingSection(
                         minutes = draft.dailyLimitMinutes,
+                        readOnly = true,
                         editingPart = editingTimerPart,
                         inputValue = timerInputValue,
                         onInputChange = ::updateTimerInput,
@@ -244,6 +245,7 @@ private fun SelectedAppSection(draft: LockedAppDraft, selectedApp: InstalledAppI
 @Composable
 private fun TimerSettingSection(
     minutes: Int,
+    readOnly: Boolean,
     editingPart: TimerInputPart?,
     inputValue: TextFieldValue,
     onInputChange: (TimerInputPart, TextFieldValue) -> Unit,
@@ -271,20 +273,60 @@ private fun TimerSettingSection(
                     Box(modifier = Modifier.width(38.dp))
                     TimerUnitLabel("분")
                 }
-                TimerReadout(
-                    minutes = minutes,
-                    editingPart = editingPart,
-                    inputValue = inputValue,
-                    onInputChange = onInputChange,
-                    onInputDone = onInputDone,
-                    onHoursClick = onHoursClick,
-                    onMinutesClick = onMinutesClick,
-                    onHoursStep = onHoursStep,
-                    onMinutesStep = onMinutesStep,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (readOnly) {
+                    TimerStaticReadout(
+                        minutes = minutes,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    TimerReadout(
+                        minutes = minutes,
+                        editingPart = editingPart,
+                        inputValue = inputValue,
+                        onInputChange = onInputChange,
+                        onInputDone = onInputDone,
+                        onHoursClick = onHoursClick,
+                        onMinutesClick = onMinutesClick,
+                        onHoursStep = onHoursStep,
+                        onMinutesStep = onMinutesStep,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun TimerStaticReadout(
+    minutes: Int,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = pad2(minutes / 60),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = AppTextStrong,
+        )
+        Text(
+            text = " : ",
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = AppTextSubtle,
+        )
+        Text(
+            text = pad2(minutes % 60),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = AppTextStrong,
+        )
     }
 }
 

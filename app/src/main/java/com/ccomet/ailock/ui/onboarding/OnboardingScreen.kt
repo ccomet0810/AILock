@@ -3,6 +3,8 @@ package com.ccomet.ailock.ui.onboarding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -13,14 +15,22 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,26 +41,34 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccomet.ailock.data.model.InstalledAppInfo
 import com.ccomet.ailock.data.model.PandaEmotion
 import com.ccomet.ailock.data.model.UserProfile
 import com.ccomet.ailock.ui.AILockUiState
+import com.ccomet.ailock.ui.components.AilockCard
 import com.ccomet.ailock.ui.components.AilockOutlinedTextField
 import com.ccomet.ailock.ui.components.FloatingBottomActionButton
+import com.ccomet.ailock.ui.components.InstalledAppIcon
 import com.ccomet.ailock.ui.components.PandaSpeechBubble
 import com.ccomet.ailock.ui.components.PermissionCards
 import com.ccomet.ailock.ui.components.RedPandaMascot
 import com.ccomet.ailock.ui.components.SpeechBubbleCard
+import com.ccomet.ailock.ui.theme.AppBorder
+import com.ccomet.ailock.ui.theme.AppSurface
 import com.ccomet.ailock.ui.theme.AILockLayout
 import com.ccomet.ailock.ui.theme.AILockShape
 import com.ccomet.ailock.ui.theme.AILockSpacing
 import com.ccomet.ailock.ui.theme.AppSurfaceMuted
 import com.ccomet.ailock.ui.theme.AppTextStrong
+import com.ccomet.ailock.ui.theme.AppTextSubtle
 
 private const val WelcomeStep = 0
-private const val LastOnboardingStep = 5
+private const val LastOnboardingStep = 6
 private const val NameInputStep = 3
 private const val PermissionStep = 4
+private const val AppSelectionStep = 5
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +87,7 @@ fun OnboardingScreen(
     onSaveProfileAndContinue: () -> Unit,
     onAppQuery: (String) -> Unit,
     onToggleApp: (String) -> Unit,
+    onDailyLimit: (Int) -> Unit,
     onSaveAppsAndContinue: () -> Unit,
     onFinish: () -> Unit,
 ) {
@@ -132,7 +151,13 @@ fun OnboardingScreen(
                         onNotificationPermission = onNotificationPermission,
                         onBatteryPermission = onBatteryPermission,
                     )
-                    5 -> CenterPandaStep(
+                    5 -> AppSelectionStep(
+                        uiState = uiState,
+                        onQuery = onAppQuery,
+                        onToggleApp = onToggleApp,
+                        onDailyLimit = onDailyLimit,
+                    )
+                    6 -> CenterPandaStep(
                         text = "좋아!\n그럼 이제 시작해볼까?",
                         emotion = PandaEmotion.ENCOURAGING,
                     )
@@ -140,18 +165,24 @@ fun OnboardingScreen(
             }
             FloatingBottomActionButton(
                 text = when (step) {
+                    AppSelectionStep -> "선택 완료"
                     1 -> "안녕!"
                     2, 3 -> "다음"
                     4 -> if (uiState.permissions.allRequiredGranted) "다음" else "권한 설정하기"
                     else -> "시작하기"
                 },
                 onClick = when (step) {
+                    AppSelectionStep -> onSaveAppsAndContinue
                     NameInputStep -> onSaveProfileAndContinue
                     PermissionStep -> if (uiState.permissions.allRequiredGranted) onNext else onOpenNextPermission
                     LastOnboardingStep -> onFinish
                     else -> onNext
                 },
-                enabled = step != NameInputStep || uiState.profileDraft.name.isNotBlank(),
+                enabled = when (step) {
+                    NameInputStep -> uiState.profileDraft.name.isNotBlank()
+                    AppSelectionStep -> uiState.onboardingSelectedApps.isNotEmpty()
+                    else -> true
+                },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -265,6 +296,170 @@ private fun PermissionsStep(
         )
     }
 }
+
+@Composable
+private fun AppSelectionStep(
+    uiState: AILockUiState,
+    onQuery: (String) -> Unit,
+    onToggleApp: (String) -> Unit,
+    onDailyLimit: (Int) -> Unit,
+) {
+    val selectedPackages = uiState.onboardingSelectedPackages
+    val selectableApps = uiState.installedApps.filter { !it.isLocked || it.packageName in selectedPackages }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(AILockSpacing.listGap),
+    ) {
+        PandaSpeechBubble(
+            text = "관리할 앱을 골라줘.\n선택한 앱에는 아래 기준 시간이 적용돼.",
+            emotion = PandaEmotion.THINKING,
+        )
+        AilockOutlinedTextField(
+            value = uiState.appQuery,
+            onValueChange = onQuery,
+            modifier = Modifier.fillMaxWidth(),
+            label = "앱 이름 검색",
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        )
+        AilockCard(contentPadding = PaddingValues(0.dp)) {
+            Column {
+                if (selectableApps.isEmpty()) {
+                    Text(
+                        text = "선택할 수 있는 앱이 없어요.",
+                        modifier = Modifier.padding(AILockSpacing.itemPadding),
+                        color = AppTextSubtle,
+                    )
+                } else {
+                    selectableApps.take(24).forEachIndexed { index, app ->
+                        OnboardingAppRow(
+                            app = app,
+                            selected = app.packageName in selectedPackages,
+                            onClick = { onToggleApp(app.packageName) },
+                        )
+                        if (index != selectableApps.take(24).lastIndex) {
+                            HorizontalDivider(color = AppBorder)
+                        }
+                    }
+                }
+            }
+        }
+        if (selectedPackages.isNotEmpty()) {
+            OnboardingTimerSettingSection(
+                minutes = uiState.onboardingDailyLimitMinutes,
+                onDailyLimit = onDailyLimit,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OnboardingAppRow(
+    app: InstalledAppInfo,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .background(if (selected) AppSurfaceMuted else AppSurface)
+            .padding(AILockSpacing.itemPadding),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AILockSpacing.iconTextGap),
+    ) {
+        InstalledAppIcon(app)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(app.appName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(app.packageName, color = AppTextSubtle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (selected) {
+            Icon(Icons.Default.Check, contentDescription = "선택됨", tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+@Composable
+private fun OnboardingTimerSettingSection(
+    minutes: Int,
+    onDailyLimit: (Int) -> Unit,
+) {
+    val hours = minutes / 60
+    val mins = minutes % 60
+
+    AilockCard {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap),
+        ) {
+            Text("하루 사용 기준 시간", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("나중에 제한 탭에서 확인할 수 있어요.", style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TimerValueColumn(label = "시", value = hours.toString().padStart(2, '0'))
+                Text(
+                    text = " : ",
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = AppTextSubtle,
+                )
+                TimerValueColumn(label = "분", value = mins.toString().padStart(2, '0'))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(AILockSpacing.sectionGap)) {
+                TimerStepGroup(
+                    label = "시",
+                    onDecrease = { onDailyLimit(clampOnboardingTimer(minutes - 60)) },
+                    onIncrease = { onDailyLimit(clampOnboardingTimer(minutes + 60)) },
+                )
+                TimerStepGroup(
+                    label = "분",
+                    onDecrease = { onDailyLimit(clampOnboardingTimer(minutes - 10)) },
+                    onIncrease = { onDailyLimit(clampOnboardingTimer(minutes + 10)) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimerValueColumn(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = AppTextSubtle)
+        Text(value, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = AppTextStrong)
+    }
+}
+
+@Composable
+private fun TimerStepGroup(
+    label: String,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = AppTextSubtle)
+        Row {
+            TimerStepButton(label = "$label 줄이기", icon = Icons.Default.Remove, onClick = onDecrease)
+            TimerStepButton(label = "$label 늘리기", icon = Icons.Default.Add, onClick = onIncrease)
+        }
+    }
+}
+
+@Composable
+private fun TimerStepButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+) {
+    IconButton(onClick = onClick) {
+        Icon(icon, contentDescription = label)
+    }
+}
+
+private fun clampOnboardingTimer(minutes: Int): Int = minutes.coerceIn(0, 23 * 60 + 59)
 
 @Composable
 private fun StepIndicator(currentStep: Int, totalSteps: Int) {

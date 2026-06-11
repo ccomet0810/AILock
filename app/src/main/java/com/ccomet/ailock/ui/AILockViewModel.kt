@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 
-private const val LAST_ONBOARDING_STEP = 5
+private const val LAST_ONBOARDING_STEP = 6
 private const val PROFILE_INPUT_STEP = 3
 
 class AILockViewModel(application: Application) : AndroidViewModel(application) {
@@ -176,6 +176,7 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
     fun saveOnboardingAppsAndContinue() {
         val snapshot = _uiState.value
         val selectedApps = snapshot.onboardingSelectedApps
+        val dailyLimitMinutes = snapshot.onboardingDailyLimitMinutes
         if (selectedApps.isEmpty()) {
             _uiState.update { it.copy(statusMessage = "관리할 앱을 하나 이상 골라주세요.") }
             return
@@ -187,7 +188,7 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
                         id = System.currentTimeMillis() + index,
                         packageName = app.packageName,
                         appName = app.appName,
-                        dailyLimitMinutes = 120,
+                        dailyLimitMinutes = dailyLimitMinutes,
                     ).toConfig(),
                 )
             }
@@ -201,6 +202,10 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
             }
             nextOnboardingStep()
         }
+    }
+
+    fun updateOnboardingDailyLimit(minutes: Int) {
+        _uiState.update { it.copy(onboardingDailyLimitMinutes = minutes.coerceIn(0, 23 * 60 + 59)) }
     }
 
     fun restartOnboarding() {
