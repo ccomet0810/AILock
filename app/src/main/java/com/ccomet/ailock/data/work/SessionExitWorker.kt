@@ -38,6 +38,7 @@ class SessionExitWorker(
 
         container.pendingFinalDecisionRepository.clear(packageName)
         container.activeUseSessionRepository.clear(packageName)
+        AILockOverlayController.cancelTimeExpiredOverlay(packageName)
         return Result.success()
     }
 

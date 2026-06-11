@@ -49,6 +49,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.lang.ref.WeakReference
 import kotlin.math.abs
@@ -58,6 +60,7 @@ object AILockOverlayController {
     private var currentViewRef: WeakReference<View>? = null
     private var currentPackageName: String? = null
     private var openingPackageName: String? = null
+    private val timeExpiredJobs = mutableMapOf<String, Job>()
 
     fun show(
         context: Context,
@@ -136,11 +139,45 @@ object AILockOverlayController {
         AILockAccessibilityService.resetOverlayCooldown()
     }
 
+    fun cancelTimeExpiredOverlay(packageName: String) {
+        timeExpiredJobs.remove(packageName)?.cancel()
+    }
+
     fun isShowingFor(packageName: String): Boolean =
         (currentViewRef?.get() != null && currentPackageName == packageName) || openingPackageName == packageName
 
     fun showingPackageName(): String? =
         currentPackageName ?: openingPackageName
+
+    private fun scheduleTimeExpiredOverlay(context: Context, session: ActiveUseSession) {
+        val packageName = session.packageName
+        timeExpiredJobs.remove(packageName)?.cancel()
+
+        val appContext = context.applicationContext
+        timeExpiredJobs[packageName] = scope.launch {
+            val waitMs = (session.expectedEndAt - System.currentTimeMillis()).coerceAtLeast(0L)
+            delay(waitMs)
+            timeExpiredJobs.remove(packageName)
+
+            val container = AILockContainer.get(appContext)
+            val latest = container.activeUseSessionRepository.get(packageName) ?: return@launch
+            if (latest.state != SESSION_STATE_IN_USE) return@launch
+            if (System.currentTimeMillis() < latest.expectedEndAt) return@launch
+            if (isShowingFor(packageName)) return@launch
+            if (AILockAccessibilityService.currentForegroundPackage() != packageName) return@launch
+
+            val config = container.ailockRepository.lockedApps.first()
+                .firstOrNull { it.packageName == packageName }
+                ?: return@launch
+            show(
+                context = appContext,
+                config = config,
+                timeLimitExceeded = true,
+                initialSession = latest,
+                initialPending = container.pendingFinalDecisionRepository.get(packageName),
+            )
+        }
+    }
 
     private fun clearShowingState(packageName: String?) {
         if (currentPackageName == packageName) {
@@ -884,12 +921,14 @@ object AILockOverlayController {
                 container.pendingFinalDecisionRepository.clear(config.packageName)
                 container.ailockRepository.grantTemporaryAllowance(config.packageName, allowedTime)
                 SessionWorkScheduler.scheduleTimeExpiredNudge(context, config.packageName, allowedTime * 60_000L)
+                scheduleTimeExpiredOverlay(context, next)
                 dismiss(context)
             }
         }
 
         private fun dismissAndHome() {
             scope.launch {
+                cancelTimeExpiredOverlay(config.packageName)
                 SessionWorkScheduler.cancelAllForPackage(context, config.packageName)
                 container.pendingFinalDecisionRepository.clear(config.packageName)
                 container.activeUseSessionRepository.clear(config.packageName)

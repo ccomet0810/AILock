@@ -144,6 +144,7 @@ class AILockAccessibilityService : AccessibilityService() {
         container.pendingFinalDecisionRepository.clear(packageName)
         container.activeUseSessionRepository.clear(packageName)
         SessionWorkScheduler.cancelAllForPackage(applicationContext, packageName)
+        AILockOverlayController.cancelTimeExpiredOverlay(packageName)
         pendingExitJobs.remove(packageName)
     }
 
