@@ -1,5 +1,6 @@
 ﻿package com.ccomet.ailock.domain.usecase
 
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import com.ccomet.ailock.data.repository.AILockRepository
@@ -17,10 +18,7 @@ class BlockingEngine(
         val ignoredPackages = ignoredPackages()
         if (BlockingPolicy.isIgnored(packageName, ignoredPackages)) return BlockDecision.Allow
 
-        val usageRecords = repository.usageRecords.first()
-        val todayUsageMinutes = TimeUtils.todayRecords(usageRecords)
-            .filter { it.packageName == packageName }
-            .sumOf { it.durationMinutes }
+        val todayUsageMinutes = todayUsageMinutes(packageName)
 
         return BlockingPolicy.evaluate(
             packageName = packageName,
@@ -47,6 +45,17 @@ class BlockingEngine(
         return context.packageManager.queryIntentActivities(intent, 0)
             .mapNotNull { it.activityInfo?.packageName }
             .toSet()
+    }
+
+    private fun todayUsageMinutes(packageName: String): Int {
+        val manager = context.getSystemService(UsageStatsManager::class.java) ?: return 0
+        val start = TimeUtils.todayStartMillis()
+        val end = System.currentTimeMillis()
+        return manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
+            .orEmpty()
+            .filter { it.packageName == packageName }
+            .sumOf { it.totalTimeInForeground }
+            .let { (it / 60_000L).toInt().coerceAtLeast(0) }
     }
 }
 

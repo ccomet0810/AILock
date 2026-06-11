@@ -162,6 +162,7 @@ private enum class InterventionScreenState {
     INPUT,
     LOADING,
     RESULT,
+    HARD_BLOCK,
     ERROR,
 }
 
@@ -199,7 +200,11 @@ private fun InterventionRoute(
         activeSession = session
         pendingDecision = pending
         isAdditionalRequest = session != null && (timeLimitExceeded || System.currentTimeMillis() >= session.expectedEndAt)
-        screenState = if (pending != null) InterventionScreenState.RESULT else InterventionScreenState.INPUT
+        screenState = when {
+            timeLimitExceeded -> InterventionScreenState.HARD_BLOCK
+            pending != null -> InterventionScreenState.RESULT
+            else -> InterventionScreenState.INPUT
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -352,6 +357,12 @@ private fun InterventionRoute(
                         pendingDecision = null
                         screenState = InterventionScreenState.INPUT
                     },
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                InterventionScreenState.HARD_BLOCK -> HardBlockScreen(
+                    appName = config.appName,
+                    onHome = onHome,
                     modifier = Modifier.fillMaxSize(),
                 )
 
@@ -696,6 +707,23 @@ private fun ErrorScreen(
         PrimaryButton("다시 시도", onRetry, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
         SecondaryButton("이번엔 멈출게", onHome, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun HardBlockScreen(
+    appName: String,
+    onHome: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.padding(22.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        SpeechCard(title = "지금은 사용할 수 없어", subtitle = "$appName 제한 시간이 적용 중이야.")
+        Spacer(Modifier.height(18.dp))
+        PrimaryButton("홈으로 가기", onHome, modifier = Modifier.fillMaxWidth())
     }
 }
 
