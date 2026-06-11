@@ -14,6 +14,7 @@ object BlockingPolicy {
         today: DayOfWeek,
         todayUsageMinutes: Int,
         hasActiveTemporaryAllowance: Boolean,
+        hasExpiredActiveSession: Boolean = false,
         ignoredPackages: Set<String>,
         now: Long = System.currentTimeMillis(),
     ): BlockDecision {
@@ -24,6 +25,14 @@ object BlockingPolicy {
 
         if (config.selectedDays.isNotEmpty() && today !in config.selectedDays) {
             return BlockDecision.Allow
+        }
+
+        if (hasExpiredActiveSession) {
+            return BlockDecision.ShowIntervention(
+                config = config,
+                reason = "temporary allowance expired",
+                timeLimitExceeded = true,
+            )
         }
 
         val dailyLimit = config.dailyLimitMinutes

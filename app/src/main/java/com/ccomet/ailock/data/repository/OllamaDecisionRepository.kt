@@ -21,6 +21,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class OllamaDecisionRepository(context: Context) {
@@ -33,10 +34,11 @@ class OllamaDecisionRepository(context: Context) {
 
     suspend fun judgePre(request: JudgePreRequest): JudgePreResponse = withContext(Dispatchers.IO) {
         val api = backendApi()
-        ensureDeviceRegistered(api)
+        val backendDeviceId = if (request.forceNewSession) freshBackendDeviceId() else deviceId
+        ensureDeviceRegistered(api, backendDeviceId)
         val session = api.start(
             StartSessionRequest(
-                deviceId = deviceId,
+                deviceId = backendDeviceId,
                 appName = request.appName,
                 lockTime = request.requestUseTime.coerceAtLeast(1),
             ),
@@ -44,7 +46,7 @@ class OllamaDecisionRepository(context: Context) {
         val decision = api.evaluate(
             EvaluateRequest(
                 sessionId = session.sessionId,
-                deviceId = deviceId,
+                deviceId = backendDeviceId,
                 userInput = request.preInput,
                 appName = request.appName,
                 targetUsage = request.dailyLimitMinutes.coerceAtLeast(1),
@@ -61,16 +63,18 @@ class OllamaDecisionRepository(context: Context) {
             summary = decision.normalizedStatus,
             source = SOURCE_BACKEND,
             finalDecision = finalDecision(decision.status, decision.allowedTime),
+            backendDeviceId = backendDeviceId,
         )
     }
 
     suspend fun judgePost(request: JudgePostRequest): JudgePostResponse = withContext(Dispatchers.IO) {
         val api = backendApi()
-        ensureDeviceRegistered(api)
+        val backendDeviceId = request.backendDeviceId?.takeIf { it.isNotBlank() } ?: deviceId
+        ensureDeviceRegistered(api, backendDeviceId)
         val sessionId = request.sessionId.ifBlank {
             api.start(
                 StartSessionRequest(
-                    deviceId = deviceId,
+                    deviceId = backendDeviceId,
                     appName = request.appName,
                     lockTime = DEFAULT_POST_LOCK_MINUTES,
                 ),
@@ -79,7 +83,7 @@ class OllamaDecisionRepository(context: Context) {
         val decision = api.evaluate(
             EvaluateRequest(
                 sessionId = sessionId,
-                deviceId = deviceId,
+                deviceId = backendDeviceId,
                 userInput = request.postInput,
                 appName = request.appName,
                 targetUsage = request.dailyLimitMinutes.coerceAtLeast(1),
@@ -100,7 +104,7 @@ class OllamaDecisionRepository(context: Context) {
         runCatching {
             val normalizedBaseUrl = normalizeBackendBaseUrl(baseUrl)
             val api = backendApi(normalizedBaseUrl)
-            ensureDeviceRegistered(api, "$normalizedBaseUrl#$deviceId")
+            ensureDeviceRegistered(api, deviceId, normalizedBaseUrl)
         }
     }
 
@@ -139,21 +143,28 @@ class OllamaDecisionRepository(context: Context) {
     }
 
     private suspend fun ensureDeviceRegistered(api: AiLockBackendApi) {
-        val key = "${backendBaseUrl()}#$deviceId"
-        ensureDeviceRegistered(api, key)
+        ensureDeviceRegistered(api, deviceId, backendBaseUrl())
     }
 
-    private suspend fun ensureDeviceRegistered(api: AiLockBackendApi, key: String) {
+    private suspend fun ensureDeviceRegistered(api: AiLockBackendApi, targetDeviceId: String) {
+        ensureDeviceRegistered(api, targetDeviceId, backendBaseUrl())
+    }
+
+    private suspend fun ensureDeviceRegistered(api: AiLockBackendApi, targetDeviceId: String, baseUrl: String) {
+        val key = "$baseUrl#$targetDeviceId"
         synchronized(registeredDeviceKeys) {
             if (key in registeredDeviceKeys) return
         }
 
-        api.registerDevice(DeviceRegisterRequest(deviceId = deviceId))
+        api.registerDevice(DeviceRegisterRequest(deviceId = targetDeviceId))
 
         synchronized(registeredDeviceKeys) {
             registeredDeviceKeys += key
         }
     }
+
+    private fun freshBackendDeviceId(): String =
+        "$deviceId-retry-${UUID.randomUUID()}"
 
     private suspend fun backendBaseUrl(): String {
         val saved = appContext.ailockDataStore.data.first()[BACKEND_BASE_URL]

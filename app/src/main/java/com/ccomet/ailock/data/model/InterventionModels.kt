@@ -9,6 +9,7 @@ data class ActiveUseSession(
     val startedAt: Long,
     val expectedEndAt: Long,
     val state: String = "IN_USE",
+    val backendDeviceId: String? = null,
 )
 
 data class PendingFinalDecision(
@@ -21,6 +22,7 @@ data class PendingFinalDecision(
     val finalDecision: String = "REJECT",
     val reasonForDecision: String = "",
     val requestedAt: Long = System.currentTimeMillis(),
+    val backendDeviceId: String? = null,
 )
 
 enum class InterventionState {

@@ -114,6 +114,27 @@ class BlockingPolicyTest {
         assertEquals("daily hard limit exceeded", intervention.reason)
     }
 
+    @Test
+    fun `expired active session shows time limit intervention before daily limit`() {
+        val config = lockedApp(selectedDays = setOf(DayOfWeek.MONDAY), dailyLimitMinutes = 10)
+
+        val decision = BlockingPolicy.evaluate(
+            packageName = "com.example.social",
+            lockedApps = listOf(config),
+            today = DayOfWeek.MONDAY,
+            todayUsageMinutes = 3,
+            hasActiveTemporaryAllowance = false,
+            hasExpiredActiveSession = true,
+            ignoredPackages = emptySet(),
+        )
+
+        assertTrue(decision is BlockDecision.ShowIntervention)
+        val intervention = decision as BlockDecision.ShowIntervention
+        assertEquals(config, intervention.config)
+        assertEquals("temporary allowance expired", intervention.reason)
+        assertTrue(intervention.timeLimitExceeded)
+    }
+
     private fun lockedApp(
         packageName: String = "com.example.social",
         selectedDays: Set<DayOfWeek> = DayOfWeek.entries.toSet(),

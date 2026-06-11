@@ -53,7 +53,12 @@ class AiJudgeWorker(
 
         val latest = container.activeUseSessionRepository.get(packageName)
         if (latest != null && latest.sessionId.isBlank()) {
-            container.activeUseSessionRepository.save(latest.copy(sessionId = pre.sessionId))
+            container.activeUseSessionRepository.save(
+                latest.copy(
+                    sessionId = pre.sessionId,
+                    backendDeviceId = pre.backendDeviceId,
+                ),
+            )
         }
         return Result.success()
     }
@@ -76,6 +81,7 @@ class AiJudgeWorker(
                 requestCount = 1,
                 todayAppUsageMinutes = todayUsage,
                 dailyLimitMinutes = dailyLimit,
+                backendDeviceId = session.backendDeviceId,
             ),
         )
 
@@ -86,6 +92,7 @@ class AiJudgeWorker(
                 status = post.status,
                 allowedTime = post.allowedTime,
                 supportMessage = post.supportMessage,
+                backendDeviceId = session.backendDeviceId,
             ),
         )
         return Result.success()

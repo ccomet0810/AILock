@@ -1,6 +1,7 @@
 ﻿package com.ccomet.ailock.data.work
 
 import android.content.Context
+import android.app.usage.UsageStatsManager
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.ccomet.ailock.AILockContainer
@@ -27,7 +28,7 @@ class OverlayNudgeWorker(
                 } else if (System.currentTimeMillis() < session.expectedEndAt) {
                     Result.retry()
                 } else if (!isTargetForeground(packageName)) {
-                    Result.success()
+                    Result.retry()
                 } else {
                     showOverlay(container, packageName, session)
                     Result.success()
@@ -38,7 +39,7 @@ class OverlayNudgeWorker(
                 if (session.state != SESSION_STATE_WAITING_FINAL_DECISION) {
                     Result.success()
                 } else if (!isTargetForeground(packageName)) {
-                    Result.success()
+                    Result.retry()
                 } else {
                     showOverlay(container, packageName, session)
                     Result.success()
@@ -63,7 +64,41 @@ class OverlayNudgeWorker(
     }
 
     private fun isTargetForeground(packageName: String): Boolean =
-        AILockAccessibilityService.currentForegroundPackage() == packageName
+        currentForegroundPackage() == packageName
+
+    private fun currentForegroundPackage(): String? {
+        AILockAccessibilityService.currentForegroundPackage()?.let { return it }
+        val manager = applicationContext.getSystemService(UsageStatsManager::class.java)
+        val now = System.currentTimeMillis()
+        val events = manager.queryEvents(now - LOOKBACK_MS, now)
+        val event = android.app.usage.UsageEvents.Event()
+        var foregroundPackage: String? = null
+
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            when (event.eventType) {
+                android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED,
+                usageMoveToForegroundEvent(),
+                -> foregroundPackage = event.packageName
+
+                android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED,
+                usageMoveToBackgroundEvent(),
+                -> if (foregroundPackage == event.packageName) {
+                    foregroundPackage = null
+                }
+            }
+        }
+
+        return foregroundPackage
+    }
+
+    @Suppress("DEPRECATION")
+    private fun usageMoveToForegroundEvent(): Int =
+        android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND
+
+    @Suppress("DEPRECATION")
+    private fun usageMoveToBackgroundEvent(): Int =
+        android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND
 
     companion object {
         const val KEY_PACKAGE_NAME = "packageName"
@@ -74,5 +109,6 @@ class OverlayNudgeWorker(
 
         private const val SESSION_STATE_IN_USE = "IN_USE"
         private const val SESSION_STATE_WAITING_FINAL_DECISION = "WAITING_FINAL_DECISION"
+        private const val LOOKBACK_MS = 30_000L
     }
 }

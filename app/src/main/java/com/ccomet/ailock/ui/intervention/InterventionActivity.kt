@@ -81,6 +81,7 @@ import com.ccomet.ailock.data.model.JudgePreRequest
 import com.ccomet.ailock.data.model.LockedAppConfig
 import com.ccomet.ailock.data.model.PendingFinalDecision
 import com.ccomet.ailock.data.model.UsageEventType
+import com.ccomet.ailock.data.work.SessionWorkScheduler
 import com.ccomet.ailock.service.AILockAccessibilityService
 import com.ccomet.ailock.service.OverlayService
 import com.ccomet.ailock.ui.components.PrimaryButton
@@ -190,6 +191,7 @@ private fun InterventionRoute(
     var activeSession by remember { mutableStateOf<ActiveUseSession?>(null) }
     var pendingDecision by remember { mutableStateOf<PendingFinalDecision?>(null) }
     var isAdditionalRequest by remember { mutableStateOf(false) }
+    var forceFreshSession by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var requestJob by remember { mutableStateOf<Job?>(null) }
     var overlayVisible by remember { mutableStateOf(false) }
@@ -256,6 +258,7 @@ private fun InterventionRoute(
                                             requestCount = 1,
                                             todayAppUsageMinutes = todayUsage,
                                             dailyLimitMinutes = dailyLimit,
+                                            backendDeviceId = session.backendDeviceId,
                                         ),
                                     )
                                     PendingFinalDecision(
@@ -266,6 +269,7 @@ private fun InterventionRoute(
                                         userInput = reasonInput,
                                         stateScore = post.stateScore,
                                         finalDecision = post.finalDecision,
+                                        backendDeviceId = session.backendDeviceId,
                                     )
                                 } else {
                                     val pre = container.ollamaDecisionRepository.judgePre(
@@ -275,6 +279,7 @@ private fun InterventionRoute(
                                             requestUseTime = requestedMinutes(dailyLimit, todayUsage),
                                             todayAppUsageMinutes = todayUsage,
                                             dailyLimitMinutes = dailyLimit,
+                                            forceNewSession = forceFreshSession,
                                         ),
                                     )
                                     PendingFinalDecision(
@@ -286,9 +291,11 @@ private fun InterventionRoute(
                                         stateScore = pre.stateScore,
                                         finalDecision = pre.finalDecision,
                                         reasonForDecision = pre.reason,
+                                        backendDeviceId = pre.backendDeviceId,
                                     )
                                 }
                             }.onSuccess { decision ->
+                                forceFreshSession = false
                                 recordAiResult(container, config, reasonInput, decision)
                                 pendingDecision = decision
                                 screenState = InterventionScreenState.RESULT
@@ -339,6 +346,7 @@ private fun InterventionRoute(
                                 startedAt = now,
                                 expectedEndAt = now + allowedTime * 60_000L,
                                 state = SESSION_STATE_IN_USE,
+                                backendDeviceId = pendingDecision?.backendDeviceId,
                             )
                             container.activeUseSessionRepository.save(session)
                             container.pendingFinalDecisionRepository.clear(config.packageName)
@@ -355,6 +363,7 @@ private fun InterventionRoute(
                     },
                     onRetry = {
                         pendingDecision = null
+                        forceFreshSession = true
                         screenState = InterventionScreenState.INPUT
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -750,6 +759,11 @@ private fun scheduleTimeExpiredIntervention(
     container: AILockContainer,
     session: ActiveUseSession,
 ) {
+    SessionWorkScheduler.scheduleTimeExpiredNudge(
+        context = appContext,
+        packageName = session.packageName,
+        delayMs = (session.expectedEndAt - System.currentTimeMillis()).coerceAtLeast(0L),
+    )
     backgroundScope.launch {
         val waitMs = (session.expectedEndAt - System.currentTimeMillis()).coerceAtLeast(0L)
         delay(waitMs)

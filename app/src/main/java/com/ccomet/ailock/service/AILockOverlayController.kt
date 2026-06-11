@@ -167,6 +167,7 @@ object AILockOverlayController {
         private var bottomStack: FrameLayout? = null
         private var promptStack: View? = null
         private var lastInputReason: String = ""
+        private var forceFreshSession: Boolean = false
         private var judgeJob: Job? = null
         private var keyboardTranslationY = 0f
         private var keyboardWasVisible = false
@@ -494,6 +495,7 @@ object AILockOverlayController {
                         requestCount = 1,
                         todayAppUsageMinutes = todayUsage,
                         dailyLimitMinutes = dailyLimit,
+                        backendDeviceId = currentSession.backendDeviceId,
                     ),
                 )
                 PendingFinalDecision(
@@ -504,6 +506,7 @@ object AILockOverlayController {
                     userInput = input,
                     stateScore = post.stateScore,
                     finalDecision = post.finalDecision,
+                    backendDeviceId = currentSession.backendDeviceId,
                 )
             } else {
                 val pre = container.ollamaDecisionRepository.judgePre(
@@ -514,6 +517,7 @@ object AILockOverlayController {
                         todayAppUsageMinutes = todayUsage,
                         dailyLimitMinutes = dailyLimit,
                         previousRequest = pending?.toPreviousRequest(),
+                        forceNewSession = forceFreshSession,
                     ),
                 )
                 PendingFinalDecision(
@@ -525,10 +529,12 @@ object AILockOverlayController {
                     stateScore = pre.stateScore,
                     finalDecision = pre.finalDecision,
                     reasonForDecision = pre.reason,
+                    backendDeviceId = pre.backendDeviceId,
                 )
             }
 
             recordAiResult(input, decision)
+            forceFreshSession = false
             return decision.also {
                 pending = it
                 if (it.allowedTime > 0 && currentSession == null) {
@@ -541,6 +547,7 @@ object AILockOverlayController {
                         plannedMinutes = it.allowedTime,
                         startedAt = now,
                         expectedEndAt = now + it.allowedTime * 60_000L,
+                        backendDeviceId = it.backendDeviceId,
                     )
                 }
             }
@@ -676,7 +683,12 @@ object AILockOverlayController {
                 )
                 addView(
                     actionButton(if (allowed) "이번엔 참아볼게" else "다시 말해볼게", primary = false) {
-                        if (allowed) dismissAndHome() else renderInput(animate = true)
+                        if (allowed) {
+                            dismissAndHome()
+                        } else {
+                            forceFreshSession = true
+                            renderInput(animate = true)
+                        }
                     },
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 52.dp()).apply { topMargin = 10.dp() },
                 )
@@ -866,6 +878,7 @@ object AILockOverlayController {
                     plannedMinutes = allowedTime,
                     startedAt = now,
                     expectedEndAt = now + allowedTime * 60_000L,
+                    backendDeviceId = decision.backendDeviceId,
                 )
                 container.activeUseSessionRepository.save(next)
                 container.pendingFinalDecisionRepository.clear(config.packageName)

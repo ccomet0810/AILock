@@ -23,6 +23,7 @@ class AILockContainer private constructor(context: Context) {
     val blockingEngine = BlockingEngine(
         context = appContext,
         repository = ailockRepository,
+        activeUseSessionRepository = activeUseSessionRepository,
         appListLoader = appListLoader,
     )
 

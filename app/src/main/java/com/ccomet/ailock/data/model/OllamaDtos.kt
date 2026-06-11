@@ -7,6 +7,7 @@ data class JudgePreRequest(
     val todayAppUsageMinutes: Int = 0,
     val dailyLimitMinutes: Int = 120,
     val previousRequest: PreviousUnlockRequest? = null,
+    val forceNewSession: Boolean = false,
 )
 
 data class JudgePostRequest(
@@ -17,6 +18,7 @@ data class JudgePostRequest(
     val requestCount: Int = 1,
     val todayAppUsageMinutes: Int = 0,
     val dailyLimitMinutes: Int = 120,
+    val backendDeviceId: String? = null,
 )
 
 data class JudgePreResponse(
@@ -30,6 +32,7 @@ data class JudgePreResponse(
     val stateScore: Float = 0f,
     val finalDecision: String = "REJECT",
     val checks: List<JudgmentCheck> = emptyList(),
+    val backendDeviceId: String? = null,
 )
 
 data class JudgePostResponse(
