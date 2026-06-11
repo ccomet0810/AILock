@@ -7,12 +7,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -158,18 +161,25 @@ fun ActiveLockTimerList(
         verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap),
     ) {
         SectionTitle(title = title)
-        activeConfigs.forEach { config ->
-            ActiveLockTimerCard(
-                config = config,
-                appInfo = installedAppsByPackage[config.packageName],
-                now = now,
-            )
+        AilockCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+            Column {
+                activeConfigs.forEachIndexed { index, config ->
+                    ActiveLockTimerRow(
+                        config = config,
+                        appInfo = installedAppsByPackage[config.packageName],
+                        now = now,
+                    )
+                    if (index != activeConfigs.lastIndex) {
+                        HorizontalDivider(color = AppBorder)
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun ActiveLockTimerCard(
+private fun ActiveLockTimerRow(
     config: LockedAppConfig,
     appInfo: InstalledAppInfo?,
     now: Long,
@@ -179,50 +189,59 @@ private fun ActiveLockTimerCard(
     val totalMs = ((config.lockUntilAt ?: now) - startedAt).coerceAtLeast(1L)
     val progress = (1f - (remainingMs.toFloat() / totalMs.toFloat())).coerceIn(0f, 1f)
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = AILockShape.card,
-        colors = CardDefaults.cardColors(containerColor = AppSurface),
-        border = BorderStroke(1.dp, AppBorder),
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(AILockSpacing.itemPadding),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AILockSpacing.iconTextGap),
     ) {
-        Row(
-            modifier = Modifier.padding(AILockSpacing.itemPadding),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(AILockSpacing.iconTextGap),
-        ) {
-            if (appInfo != null) {
-                InstalledAppIcon(appInfo, size = 48.dp)
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(AILockShape.card)
-                        .background(AppSurfaceMuted)
-                        .border(1.dp, AppBorder, AILockShape.card),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(config.appName.take(1), fontWeight = FontWeight.Bold, color = AppTextStrong)
-                }
+        if (appInfo != null) {
+            InstalledAppIcon(appInfo, size = 48.dp)
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(AILockShape.card)
+                    .background(AppSurfaceMuted)
+                    .border(1.dp, AppBorder, AILockShape.card),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(config.appName.take(1), fontWeight = FontWeight.Bold, color = AppTextStrong)
             }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(config.appName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(9.dp)
-                        .clip(AILockShape.pill),
-                    color = PandaOrange,
-                    trackColor = PandaCream,
+                Spacer(Modifier.width(AILockSpacing.buttonIconGap))
+                Text(
+                    text = formatRemainingLockTime(remainingMs),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = AppTextSubtle,
+                    maxLines = 1,
                 )
             }
-            Text(
-                text = formatRemainingLockTime(remainingMs),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = AppTextStrong,
-                maxLines = 1,
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .clip(AILockShape.pill)
+                    .background(AppSurfaceMuted),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .height(9.dp)
+                        .clip(AILockShape.pill),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(10.dp)
+                            .background(PandaOrange),
+                    )
+                }
+            }
         }
     }
 }
