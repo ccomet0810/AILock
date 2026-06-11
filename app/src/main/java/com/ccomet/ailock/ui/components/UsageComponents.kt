@@ -157,7 +157,7 @@ fun ActiveLockTimerList(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap),
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppTextStrong)
+        SectionTitle(title = title)
         activeConfigs.forEach { config ->
             ActiveLockTimerCard(
                 config = config,
@@ -201,11 +201,20 @@ private fun ActiveLockTimerCard(
                     Text(config.appName.take(1), fontWeight = FontWeight.Bold, color = AppTextStrong)
                 }
             }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(config.appName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("잠금 해제까지 ${formatRemainingLockTime(remainingMs)}", style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
+                Text("잠금 해제까지", style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
             }
-            StatusPill(text = "잠금 중", positive = false)
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = formatRemainingLockTime(remainingMs),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = AppTextStrong,
+                    maxLines = 1,
+                )
+                StatusPill(text = "잠금 중", positive = false)
+            }
         }
     }
 }

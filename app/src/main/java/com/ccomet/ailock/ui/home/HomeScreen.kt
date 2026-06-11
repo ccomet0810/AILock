@@ -26,36 +26,46 @@ import com.ccomet.ailock.ui.theme.AILockSpacing
 @Composable
 fun HomeScreen(uiState: AILockUiState) {
     val installedAppsByPackage = uiState.installedApps.associateBy { it.packageName }
+    val hasActiveLockTimer = uiState.lockedApps.any { (it.lockUntilAt ?: 0L) > System.currentTimeMillis() }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = AILockSpacing.screenHorizontal)
-                .padding(top = AILockSpacing.sectionGap, bottom = AILockLayout.scrollContentBottomPadding),
-            verticalArrangement = Arrangement.spacedBy(AILockSpacing.sectionGap),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .padding(innerPadding),
+            contentAlignment = if (hasActiveLockTimer) Alignment.TopCenter else Alignment.Center,
         ) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp),
-                contentAlignment = Alignment.Center,
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = AILockSpacing.screenHorizontal)
+                    .padding(
+                        top = if (hasActiveLockTimer) AILockSpacing.sectionGap else 0.dp,
+                        bottom = AILockLayout.scrollContentBottomPadding,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(AILockSpacing.sectionGap),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                PandaSpeechBubble(
-                    text = homeMessage(uiState.lockedApps.size),
-                    modifier = Modifier.fillMaxWidth(),
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PandaSpeechBubble(
+                        text = homeMessage(uiState.lockedApps.size),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                ActiveLockTimerList(
+                    configs = uiState.lockedApps,
+                    installedAppsByPackage = installedAppsByPackage,
+                    title = "지금 작동 중인 타이머",
                 )
             }
-            ActiveLockTimerList(
-                configs = uiState.lockedApps,
-                installedAppsByPackage = installedAppsByPackage,
-                title = "지금 작동 중인 타이머",
-            )
         }
     }
 }
