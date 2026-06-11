@@ -157,8 +157,10 @@ fun ActiveLockTimerList(
     if (activeConfigs.isEmpty()) return
 
     Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         SectionTitle(title = title)
         AilockCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
@@ -187,7 +189,7 @@ private fun ActiveLockTimerRow(
     val remainingMs = ((config.lockUntilAt ?: 0L) - now).coerceAtLeast(0L)
     val startedAt = config.lockStartedAt ?: ((config.lockUntilAt ?: now) - (config.lockDurationMinutes ?: 0) * 60_000L)
     val totalMs = ((config.lockUntilAt ?: now) - startedAt).coerceAtLeast(1L)
-    val progress = (1f - (remainingMs.toFloat() / totalMs.toFloat())).coerceIn(0f, 1f)
+    val progress = (remainingMs.toFloat() / totalMs.toFloat()).coerceIn(0f, 1f)
 
     Row(
         modifier = Modifier
