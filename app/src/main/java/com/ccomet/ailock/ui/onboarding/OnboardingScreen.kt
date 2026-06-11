@@ -617,74 +617,58 @@ private fun OnboardingTimerNumber(
     Box(
         modifier = Modifier
             .width(96.dp)
-            .height(OnboardingTimerWheelItemHeight * 3)
-            .clipToBounds()
-            .draggable(
-                state = dragState,
-                orientation = Orientation.Vertical,
-                onDragStopped = { dragAmount = 0f },
-            )
+            .height(OnboardingTimerWheelItemHeight)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .graphicsLayer { translationY = visualOffset },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+                .height(OnboardingTimerWheelItemHeight),
+            contentAlignment = Alignment.Center,
         ) {
-            OnboardingTimerSideValue(previousValue, modifier = Modifier.height(OnboardingTimerWheelItemHeight))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(OnboardingTimerWheelItemHeight),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (editing) {
-                    BasicTextField(
-                        value = inputValue,
-                        onValueChange = onInputChange,
-                        modifier = Modifier
-                            .width(84.dp)
-                            .focusRequester(focusRequester),
-                        textStyle = MaterialTheme.typography.displaySmall.copy(
-                            color = AppTextStrong,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                        ),
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Number,
-                            imeAction = ImeAction.Done,
-                        ),
-                        keyboardActions = KeyboardActions(onDone = { onInputDone() }),
-                        singleLine = true,
-                        decorationBox = { innerTextField ->
-                            Box(contentAlignment = Alignment.Center) {
-                                if (inputValue.text.isBlank()) {
-                                    Text(
-                                        text = part.placeholder,
-                                        textAlign = TextAlign.Center,
-                                        style = MaterialTheme.typography.displaySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = AppTextSubtle.copy(alpha = 0.45f),
-                                    )
-                                }
-                                innerTextField()
-                            }
-                        },
-                    )
-                } else {
-                    Text(
-                        text = value,
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.displaySmall,
-                        fontWeight = FontWeight.Bold,
+            if (editing) {
+                BasicTextField(
+                    value = inputValue,
+                    onValueChange = onInputChange,
+                    modifier = Modifier
+                        .width(84.dp)
+                        .focusRequester(focusRequester),
+                    textStyle = MaterialTheme.typography.displaySmall.copy(
                         color = AppTextStrong,
-                    )
-                }
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    ),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { onInputDone() }),
+                    singleLine = true,
+                    decorationBox = { innerTextField ->
+                        Box(contentAlignment = Alignment.Center) {
+                            if (inputValue.text.isBlank()) {
+                                Text(
+                                    text = part.placeholder,
+                                    textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.displaySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AppTextSubtle.copy(alpha = 0.45f),
+                                )
+                            }
+                            innerTextField()
+                        }
+                    },
+                )
+            } else {
+                Text(
+                    text = value,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = AppTextStrong,
+                )
             }
-            OnboardingTimerSideValue(nextValue, modifier = Modifier.height(OnboardingTimerWheelItemHeight))
         }
     }
 }
@@ -733,7 +717,7 @@ private enum class OnboardingTimerInputPart(
 }
 
 private val OnboardingTimerWheelItemHeight = 62.dp
-private const val ONBOARDING_TIMER_MIN_MINUTES = 0
+private const val ONBOARDING_TIMER_MIN_MINUTES = 10
 private const val ONBOARDING_TIMER_MAX_MINUTES = 23 * 60 + 59
 
 private fun clampOnboardingTimer(minutes: Int): Int =

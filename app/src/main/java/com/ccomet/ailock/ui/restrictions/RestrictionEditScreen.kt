@@ -471,74 +471,58 @@ private fun TimerNumber(
     Box(
         modifier = Modifier
             .width(96.dp)
-            .height(TimerWheelItemHeight * 3)
-            .clipToBounds()
-            .draggable(
-                state = dragState,
-                orientation = Orientation.Vertical,
-                onDragStopped = { dragAmount = 0f },
-            )
+            .height(TimerWheelItemHeight)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .graphicsLayer { translationY = visualOffset },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+                .height(TimerWheelItemHeight),
+            contentAlignment = Alignment.Center,
         ) {
-            TimerSideValue(previousValue, modifier = Modifier.height(TimerWheelItemHeight))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(TimerWheelItemHeight),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (editing) {
-                    BasicTextField(
-                        value = inputValue,
-                        onValueChange = onInputChange,
-                        modifier = Modifier
-                            .width(84.dp)
-                            .focusRequester(focusRequester),
-                        textStyle = MaterialTheme.typography.displaySmall.copy(
-                            color = AppTextStrong,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                        ),
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Number,
-                            imeAction = ImeAction.Done,
-                        ),
-                        keyboardActions = KeyboardActions(onDone = { onInputDone() }),
-                        singleLine = true,
-                        decorationBox = { innerTextField ->
-                            Box(contentAlignment = Alignment.Center) {
-                                if (inputValue.text.isBlank()) {
-                                    Text(
-                                        text = part.placeholder,
-                                        textAlign = TextAlign.Center,
-                                        style = MaterialTheme.typography.displaySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = AppTextSubtle.copy(alpha = 0.45f),
-                                    )
-                                }
-                                innerTextField()
-                            }
-                        },
-                    )
-                } else {
-                    Text(
-                        text = value,
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.displaySmall,
-                        fontWeight = FontWeight.Bold,
+            if (editing) {
+                BasicTextField(
+                    value = inputValue,
+                    onValueChange = onInputChange,
+                    modifier = Modifier
+                        .width(84.dp)
+                        .focusRequester(focusRequester),
+                    textStyle = MaterialTheme.typography.displaySmall.copy(
                         color = AppTextStrong,
-                    )
-                }
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    ),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { onInputDone() }),
+                    singleLine = true,
+                    decorationBox = { innerTextField ->
+                        Box(contentAlignment = Alignment.Center) {
+                            if (inputValue.text.isBlank()) {
+                                Text(
+                                    text = part.placeholder,
+                                    textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.displaySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AppTextSubtle.copy(alpha = 0.45f),
+                                )
+                            }
+                            innerTextField()
+                        }
+                    },
+                )
+            } else {
+                Text(
+                    text = value,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = AppTextStrong,
+                )
             }
-            TimerSideValue(nextValue, modifier = Modifier.height(TimerWheelItemHeight))
         }
     }
 }
@@ -581,7 +565,7 @@ private enum class TimerInputPart(
 }
 
 private val TimerWheelItemHeight = 62.dp
-private const val TIMER_MIN_MINUTES = 0
+private const val TIMER_MIN_MINUTES = 10
 private const val TIMER_MAX_MINUTES = 23 * 60 + 59
 
 private fun clampTimerMinutes(minutes: Int): Int = minutes.coerceIn(TIMER_MIN_MINUTES, TIMER_MAX_MINUTES)

@@ -20,6 +20,7 @@ import java.time.DayOfWeek
 
 private const val LAST_ONBOARDING_STEP = 6
 private const val PROFILE_INPUT_STEP = 3
+private const val MIN_TIMER_MINUTES = 10
 
 class AILockViewModel(application: Application) : AndroidViewModel(application) {
     private val container = AILockContainer.get(application)
@@ -207,13 +208,13 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun updateOnboardingDailyLimit(minutes: Int) {
-        _uiState.update { it.copy(onboardingDailyLimitMinutes = minutes.coerceIn(0, 23 * 60 + 59)) }
+        _uiState.update { it.copy(onboardingDailyLimitMinutes = minutes.coerceIn(MIN_TIMER_MINUTES, 23 * 60 + 59)) }
     }
 
     fun updateOnboardingAppDailyLimit(packageName: String, minutes: Int) {
         _uiState.update {
             it.copy(
-                onboardingAppDailyLimits = it.onboardingAppDailyLimits + (packageName to minutes.coerceIn(0, 23 * 60 + 59)),
+                onboardingAppDailyLimits = it.onboardingAppDailyLimits + (packageName to minutes.coerceIn(MIN_TIMER_MINUTES, 23 * 60 + 59)),
             )
         }
     }
@@ -312,11 +313,11 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun updateDailyLimit(minutes: Int) {
-        _uiState.update { it.copy(draft = it.draft.copy(dailyLimitMinutes = minutes.coerceIn(0, 23 * 60 + 59))) }
+        _uiState.update { it.copy(draft = it.draft.copy(dailyLimitMinutes = minutes.coerceIn(MIN_TIMER_MINUTES, 23 * 60 + 59))) }
     }
 
     fun updateLockTimer(minutes: Int) {
-        _uiState.update { it.copy(draft = it.draft.copy(lockTimerMinutes = minutes.coerceIn(1, 23 * 60 + 59))) }
+        _uiState.update { it.copy(draft = it.draft.copy(lockTimerMinutes = minutes.coerceIn(MIN_TIMER_MINUTES, 23 * 60 + 59))) }
     }
 
     fun startDraftLockTimer(onStarted: () -> Unit) {
