@@ -480,9 +480,13 @@ object AILockOverlayController {
                         }.onSuccess {
                             pending = it
                             renderResult(it)
-                        }.onFailure {
-                            if (it !is CancellationException) {
-                                renderError("판단 중 문제가 생겼어요. 다시 시도해 주세요.")
+                        }.onFailure { throwable ->
+                            if (throwable !is CancellationException) {
+                                renderError(
+                                    throwable.message
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?: "판단 중 문제가 생겼어요. 다시 시도해 주세요.",
+                                )
                             }
                         }
                     }

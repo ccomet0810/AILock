@@ -15,10 +15,14 @@ import com.ccomet.ailock.data.remote.DeviceRegisterRequest
 import com.ccomet.ailock.data.remote.EvaluateRequest
 import com.ccomet.ailock.data.remote.EvaluateResponse
 import com.ccomet.ailock.data.remote.StartSessionRequest
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.UUID
@@ -28,31 +32,35 @@ class OllamaDecisionRepository(context: Context) {
     private val appContext = context.applicationContext
     private val apiCache = mutableMapOf<String, AiLockBackendApi>()
     private val registeredDeviceKeys = mutableSetOf<String>()
+    private val gson = Gson()
     private val deviceId: String
         get() = Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
             ?: "ailock-android-device"
 
     suspend fun judgePre(request: JudgePreRequest): JudgePreResponse = withContext(Dispatchers.IO) {
-        val api = backendApi()
         val backendDeviceId = if (request.forceNewSession) freshBackendDeviceId() else deviceId
-        ensureDeviceRegistered(api, backendDeviceId)
-        val session = api.start(
-            StartSessionRequest(
-                deviceId = backendDeviceId,
-                appName = request.appName,
-                lockTime = request.requestUseTime.coerceAtLeast(1),
-            ),
-        )
-        val decision = api.evaluate(
-            EvaluateRequest(
-                sessionId = session.sessionId,
-                deviceId = backendDeviceId,
-                userInput = request.preInput,
-                appName = request.appName,
-                targetUsage = request.dailyLimitMinutes.coerceAtLeast(1),
-                todayUsage = request.todayAppUsageMinutes,
-            ),
-        )
+        val (session, decision) = runBackendCatching {
+            val api = backendApi()
+            ensureDeviceRegistered(api, backendDeviceId)
+            val session = api.start(
+                StartSessionRequest(
+                    deviceId = backendDeviceId,
+                    appName = request.appName,
+                    lockTime = request.requestUseTime.coerceAtLeast(1),
+                ),
+            )
+            val decision = api.evaluate(
+                EvaluateRequest(
+                    sessionId = session.sessionId,
+                    deviceId = backendDeviceId,
+                    userInput = request.preInput,
+                    appName = request.appName,
+                    targetUsage = request.dailyLimitMinutes.coerceAtLeast(1),
+                    todayUsage = request.todayAppUsageMinutes,
+                ),
+            )
+            session to decision
+        }
 
         JudgePreResponse(
             sessionId = session.sessionId,
@@ -68,28 +76,30 @@ class OllamaDecisionRepository(context: Context) {
     }
 
     suspend fun judgePost(request: JudgePostRequest): JudgePostResponse = withContext(Dispatchers.IO) {
-        val api = backendApi()
         val backendDeviceId = request.backendDeviceId?.takeIf { it.isNotBlank() } ?: deviceId
-        ensureDeviceRegistered(api, backendDeviceId)
-        val sessionId = request.sessionId.ifBlank {
-            api.start(
-                StartSessionRequest(
+        val decision = runBackendCatching {
+            val api = backendApi()
+            ensureDeviceRegistered(api, backendDeviceId)
+            val sessionId = request.sessionId.ifBlank {
+                api.start(
+                    StartSessionRequest(
+                        deviceId = backendDeviceId,
+                        appName = request.appName,
+                        lockTime = DEFAULT_POST_LOCK_MINUTES,
+                    ),
+                ).sessionId
+            }
+            api.evaluate(
+                EvaluateRequest(
+                    sessionId = sessionId,
                     deviceId = backendDeviceId,
+                    userInput = request.postInput,
                     appName = request.appName,
-                    lockTime = DEFAULT_POST_LOCK_MINUTES,
+                    targetUsage = request.dailyLimitMinutes.coerceAtLeast(1),
+                    todayUsage = request.todayAppUsageMinutes,
                 ),
-            ).sessionId
+            )
         }
-        val decision = api.evaluate(
-            EvaluateRequest(
-                sessionId = sessionId,
-                deviceId = backendDeviceId,
-                userInput = request.postInput,
-                appName = request.appName,
-                targetUsage = request.dailyLimitMinutes.coerceAtLeast(1),
-                todayUsage = request.todayAppUsageMinutes,
-            ),
-        )
 
         JudgePostResponse(
             status = decision.normalizedStatus,
@@ -104,7 +114,9 @@ class OllamaDecisionRepository(context: Context) {
         runCatching {
             val normalizedBaseUrl = normalizeBackendBaseUrl(baseUrl)
             val api = backendApi(normalizedBaseUrl)
-            ensureDeviceRegistered(api, deviceId, normalizedBaseUrl)
+            runBackendCatching {
+                ensureDeviceRegistered(api, deviceId, normalizedBaseUrl)
+            }
         }
     }
 
@@ -166,6 +178,34 @@ class OllamaDecisionRepository(context: Context) {
     private fun freshBackendDeviceId(): String =
         "$deviceId-retry-${UUID.randomUUID()}"
 
+    private suspend inline fun <T> runBackendCatching(block: () -> T): T =
+        try {
+            block()
+        } catch (exception: HttpException) {
+            throw BackendRequestException(extractBackendMessage(exception), exception)
+        }
+
+    private fun extractBackendMessage(exception: HttpException): String {
+        val body = exception.response()?.errorBody()?.string().orEmpty()
+        if (body.isBlank()) return exception.message()
+
+        return runCatching {
+            val root = JsonParser.parseString(body).asJsonObject
+            listOf("message", "detail", "error")
+                .firstNotNullOfOrNull { key -> root.stringValue(key)?.takeIf { it.isNotBlank() } }
+                ?: body
+        }.getOrDefault(body)
+    }
+
+    private fun JsonObject.stringValue(key: String): String? =
+        get(key)?.takeIf { !it.isJsonNull }?.let { element ->
+            if (element.isJsonPrimitive && element.asJsonPrimitive.isString) {
+                element.asString
+            } else {
+                gson.toJson(element)
+            }
+        }
+
     private suspend fun backendBaseUrl(): String {
         val saved = appContext.ailockDataStore.data.first()[BACKEND_BASE_URL]
         return normalizeBackendBaseUrl(saved ?: DEFAULT_BACKEND_BASE_URL)
@@ -215,3 +255,8 @@ class OllamaDecisionRepository(context: Context) {
             .build()
     }
 }
+
+class BackendRequestException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)

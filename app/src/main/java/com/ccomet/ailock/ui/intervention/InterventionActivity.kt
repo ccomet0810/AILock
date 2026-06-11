@@ -301,7 +301,9 @@ private fun InterventionRoute(
                                 screenState = InterventionScreenState.RESULT
                             }.onFailure { throwable ->
                                 if (throwable !is CancellationException) {
-                                    errorMessage = "판단 중 문제가 생겼어요. 다시 시도해 주세요."
+                                    errorMessage = throwable.message
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?: "판단 중 문제가 생겼어요. 다시 시도해 주세요."
                                     screenState = InterventionScreenState.ERROR
                                 }
                             }
