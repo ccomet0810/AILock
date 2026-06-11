@@ -202,6 +202,7 @@ class OllamaDecisionRepository(context: Context) {
             408 -> serverMessage ?: "요청 시간이 너무 오래 걸렸어요. 잠시 후 다시 시도해주세요."
             409 -> serverMessage ?: "이미 처리 중인 요청이 있어요. 잠시 후 다시 시도해주세요."
             429 -> serverMessage ?: "요청이 한 번에 몰려서 잠시 처리할 수 없어요. 조금 있다가 다시 시도해주세요."
+            504 -> serverMessage ?: "서버 응답이 너무 오래 걸리고 있어요. 조금 있다가 다시 시도해주세요."
             in 500..599 -> serverMessage ?: "서버에서 잠시 문제가 생겼어요. 조금 있다가 다시 시도해주세요."
             else -> serverMessage ?: "요청을 처리하지 못했어요. 잠시 후 다시 시도해주세요."
         }
@@ -221,6 +222,7 @@ class OllamaDecisionRepository(context: Context) {
 
     private fun String.isTechnicalHttpText(): Boolean {
         val normalized = trim()
+        val lowercase = normalized.lowercase()
         if (normalized.isBlank()) return true
         return normalized.equals("Bad Request", ignoreCase = true) ||
             normalized.equals("Unauthorized", ignoreCase = true) ||
@@ -229,6 +231,9 @@ class OllamaDecisionRepository(context: Context) {
             normalized.equals("Conflict", ignoreCase = true) ||
             normalized.equals("Too Many Requests", ignoreCase = true) ||
             normalized.equals("Internal Server Error", ignoreCase = true) ||
+            "gateway timeout" in lowercase ||
+            lowercase.matches(Regex("""http\s+\d{3}.*""")) ||
+            lowercase.matches(Regex("""\d{3}\s+.*""")) ||
             normalized.startsWith("<!DOCTYPE", ignoreCase = true) ||
             normalized.startsWith("<html", ignoreCase = true)
     }
