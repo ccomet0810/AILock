@@ -49,6 +49,7 @@ import com.ccomet.ailock.ui.records.RecordsScreen
 import com.ccomet.ailock.ui.restrictions.AppPickerScreen
 import com.ccomet.ailock.ui.restrictions.RestrictionEditScreen
 import com.ccomet.ailock.ui.restrictions.RestrictionsScreen
+import com.ccomet.ailock.ui.settings.AdminSettingsScreen
 import com.ccomet.ailock.ui.settings.PermissionManagementScreen
 import com.ccomet.ailock.ui.settings.ProfileEditScreen
 import com.ccomet.ailock.ui.settings.SettingsScreen
@@ -190,12 +191,21 @@ fun AILockApp(
                             navController.navigate(Routes.PERMISSIONS)
                         }
                     },
-                    onRestartOnboarding = {
+                    onAdmin = {
                         navigateAfterBottomBarHide {
-                            viewModel.restartOnboarding()
-                            navController.navigate(Routes.ONBOARDING) {
-                                popUpTo(Routes.HOME) { inclusive = true }
-                            }
+                            navController.navigate(Routes.ADMIN_SETTINGS)
+                        }
+                    },
+                )
+            }
+            composable(Routes.ADMIN_SETTINGS) {
+                AdminSettingsScreen(
+                    uiState = uiState,
+                    onBack = { navController.popBackStack() },
+                    onRestartOnboarding = {
+                        viewModel.restartOnboarding()
+                        navController.navigate(Routes.ONBOARDING) {
+                            popUpTo(Routes.HOME) { inclusive = true }
                         }
                     },
                     onBackendBaseUrlSave = viewModel::saveBackendBaseUrl,
@@ -331,5 +341,6 @@ object Routes {
     const val APP_PICKER = "app_picker"
     const val PROFILE = "profile"
     const val PERMISSIONS = "permissions"
+    const val ADMIN_SETTINGS = "admin_settings"
 }
 

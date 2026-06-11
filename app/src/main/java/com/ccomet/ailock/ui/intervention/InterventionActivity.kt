@@ -691,11 +691,11 @@ private fun ErrorScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        SpeechCard(title = "앗", subtitle = message)
+        SpeechCard(title = "잠깐 문제가 생겼어", subtitle = message)
         Spacer(Modifier.height(18.dp))
         PrimaryButton("다시 시도", onRetry, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
-        SecondaryButton("이번에 참아볼게", onHome, modifier = Modifier.fillMaxWidth())
+        SecondaryButton("이번엔 멈출게", onHome, modifier = Modifier.fillMaxWidth())
     }
 }
 
@@ -710,7 +710,7 @@ private fun MissingConfigScreen(onClose: () -> Unit) {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            SpeechCard(title = "앗", subtitle = "제한 설정을 찾지 못했어요.")
+            SpeechCard(title = "설정을 찾지 못했어", subtitle = "제한 설정을 찾지 못했어요.")
             Spacer(Modifier.height(18.dp))
             PrimaryButton("닫기", onClose, modifier = Modifier.fillMaxWidth())
         }

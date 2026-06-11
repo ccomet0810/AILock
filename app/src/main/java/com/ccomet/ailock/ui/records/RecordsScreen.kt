@@ -237,7 +237,7 @@ fun RecordsScreen(uiState: AILockUiState) {
             }
             StickyCollapsingScreenHeader(
                 title = "기록",
-                subtitle = "1일, 7일 선택하여 볼 수 있어요",
+                subtitle = "하루, 주간을 선택하여 볼 수 있어요",
                 collapseFraction = headerMotion.collapseFraction,
                 modifier = Modifier.align(Alignment.TopCenter),
                 actions = {

@@ -4,12 +4,23 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 
 interface AiLockBackendApi {
+    @POST("devices")
+    suspend fun registerDevice(@Body request: DeviceRegisterRequest): DeviceRegisterResponse
+
     @POST("start")
     suspend fun start(@Body request: StartSessionRequest): StartSessionResponse
 
     @POST("evaluate")
     suspend fun evaluate(@Body request: EvaluateRequest): EvaluateResponse
 }
+
+data class DeviceRegisterRequest(
+    val deviceId: String,
+)
+
+data class DeviceRegisterResponse(
+    val success: Boolean = false,
+)
 
 data class StartSessionRequest(
     val deviceId: String,

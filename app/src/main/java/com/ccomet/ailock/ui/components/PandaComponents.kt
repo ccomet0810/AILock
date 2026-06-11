@@ -20,6 +20,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ccomet.ailock.R
 import com.ccomet.ailock.data.model.PandaEmotion
@@ -90,6 +91,7 @@ fun SpeechBubbleCard(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = AppTextStrong,
+                        textAlign = TextAlign.Center,
                     )
                 }
                 if (text.isNotBlank()) {
@@ -97,6 +99,7 @@ fun SpeechBubbleCard(
                         text = text,
                         style = MaterialTheme.typography.bodyLarge,
                         color = if (title == null) AppTextStrong else AppTextSubtle,
+                        textAlign = TextAlign.Center,
                     )
                 }
             }

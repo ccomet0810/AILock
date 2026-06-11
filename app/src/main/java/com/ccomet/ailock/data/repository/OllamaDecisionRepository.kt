@@ -11,6 +11,7 @@ import com.ccomet.ailock.data.model.JudgePostResponse
 import com.ccomet.ailock.data.model.JudgePreRequest
 import com.ccomet.ailock.data.model.JudgePreResponse
 import com.ccomet.ailock.data.remote.AiLockBackendApi
+import com.ccomet.ailock.data.remote.DeviceRegisterRequest
 import com.ccomet.ailock.data.remote.EvaluateRequest
 import com.ccomet.ailock.data.remote.EvaluateResponse
 import com.ccomet.ailock.data.remote.StartSessionRequest
@@ -19,18 +20,21 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
+import retrofit2.HttpException
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 class OllamaDecisionRepository(context: Context) {
     private val appContext = context.applicationContext
     private val apiCache = mutableMapOf<String, AiLockBackendApi>()
+    private val registeredDeviceKeys = mutableSetOf<String>()
     private val deviceId: String
         get() = Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
             ?: "ailock-android-device"
 
     suspend fun judgePre(request: JudgePreRequest): JudgePreResponse = withContext(Dispatchers.IO) {
         val api = backendApi()
+        ensureDeviceRegistered(api)
         val session = api.start(
             StartSessionRequest(
                 deviceId = deviceId,
@@ -63,6 +67,7 @@ class OllamaDecisionRepository(context: Context) {
 
     suspend fun judgePost(request: JudgePostRequest): JudgePostResponse = withContext(Dispatchers.IO) {
         val api = backendApi()
+        ensureDeviceRegistered(api)
         val sessionId = request.sessionId.ifBlank {
             api.start(
                 StartSessionRequest(
@@ -121,6 +126,26 @@ class OllamaDecisionRepository(context: Context) {
                 .build()
                 .create(AiLockBackendApi::class.java)
                 .also { apiCache[baseUrl] = it }
+        }
+    }
+
+    private suspend fun ensureDeviceRegistered(api: AiLockBackendApi) {
+        val key = "${backendBaseUrl()}#$deviceId"
+        synchronized(registeredDeviceKeys) {
+            if (key in registeredDeviceKeys) return
+        }
+
+        runCatching {
+            api.registerDevice(DeviceRegisterRequest(deviceId = deviceId))
+        }.onFailure { throwable ->
+            if (throwable is HttpException && throwable.code() == 404) {
+                return@onFailure
+            }
+            throw throwable
+        }
+
+        synchronized(registeredDeviceKeys) {
+            registeredDeviceKeys += key
         }
     }
 

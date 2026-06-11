@@ -43,9 +43,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.ccomet.ailock.R
 import com.ccomet.ailock.data.model.UserProfile
@@ -72,22 +72,17 @@ fun SettingsScreen(
     uiState: AILockUiState,
     onProfile: () -> Unit,
     onPermissions: () -> Unit,
-    onRestartOnboarding: () -> Unit,
-    onBackendBaseUrlSave: (String) -> Unit,
+    onAdmin: () -> Unit,
 ) {
     val headerMotion = rememberAILockHeaderMotionState(label = "settingsHeaderMotion")
     val headerDragState = rememberDraggableState { delta ->
         headerMotion.onDragDelta(delta)
     }
-    var showPasswordDialog by remember { mutableStateOf(false) }
     var showCreatorDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
-    var backendUrlInput by remember(uiState.backendBaseUrl) { mutableStateOf(uiState.backendBaseUrl) }
 
-    Scaffold(
-        contentWindowInsets = WindowInsets.safeDrawing,
-    ) { innerPadding ->
+    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -95,9 +90,7 @@ fun SettingsScreen(
                 .draggable(
                     state = headerDragState,
                     orientation = Orientation.Vertical,
-                    onDragStopped = { velocity ->
-                        headerMotion.settleAfterDrag(velocity)
-                    },
+                    onDragStopped = { velocity -> headerMotion.settleAfterDrag(velocity) },
                 ),
         ) {
             Column(
@@ -108,9 +101,15 @@ fun SettingsScreen(
             ) {
                 Spacer(modifier = Modifier.height(headerMotion.currentHeaderHeight))
                 SettingsCard {
-                    Text(uiState.userProfile.name.ifBlank { "이름을 입력해줘" }, style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        uiState.userProfile.name.ifBlank { "이름을 입력해줘" },
+                        style = MaterialTheme.typography.titleLarge,
+                    )
                     Text("AILock 사용자 정보", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap), modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         SecondaryButton(
                             "개인정보 수정",
                             onClick = onProfile,
@@ -125,30 +124,6 @@ fun SettingsScreen(
                         )
                     }
                 }
-                SettingsCard {
-                    Text("서버 연결", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("현재 테스트할 백엔드 주소", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedTextField(
-                        value = backendUrlInput,
-                        onValueChange = { backendUrlInput = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Backend URL") },
-                        singleLine = true,
-                        shape = AILockShape.control,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PandaOrange,
-                            unfocusedBorderColor = AppBorder,
-                            focusedContainerColor = AppSurface,
-                            unfocusedContainerColor = AppSurface,
-                        ),
-                    )
-                    Button(
-                        onClick = { onBackendBaseUrlSave(backendUrlInput) },
-                        modifier = Modifier.align(Alignment.End),
-                    ) {
-                        Text("저장")
-                    }
-                }
             }
             StickyCollapsingScreenHeader(
                 title = "설정",
@@ -160,7 +135,7 @@ fun SettingsScreen(
                         onClick = {
                             passwordInput = ""
                             passwordError = false
-                            showPasswordDialog = true
+                            showCreatorDialog = true
                         },
                     ) {
                         Icon(
@@ -171,8 +146,8 @@ fun SettingsScreen(
                     }
                 },
             )
-            if (showPasswordDialog) {
-                CreatorPasswordDialog(
+            if (showCreatorDialog) {
+                CreatorAccessDialog(
                     password = passwordInput,
                     hasError = passwordError,
                     onPasswordChange = {
@@ -180,28 +155,19 @@ fun SettingsScreen(
                         passwordError = false
                     },
                     onDismiss = {
-                        showPasswordDialog = false
+                        showCreatorDialog = false
                         passwordInput = ""
                         passwordError = false
                     },
                     onConfirm = {
                         if (passwordInput == CREATOR_PASSWORD) {
-                            showPasswordDialog = false
-                            showCreatorDialog = true
+                            showCreatorDialog = false
                             passwordInput = ""
                             passwordError = false
+                            onAdmin()
                         } else {
                             passwordError = true
                         }
-                    },
-                )
-            }
-            if (showCreatorDialog) {
-                CreatorInfoDialog(
-                    onDismiss = { showCreatorDialog = false },
-                    onRestartOnboarding = {
-                        showCreatorDialog = false
-                        onRestartOnboarding()
                     },
                 )
             }
@@ -210,7 +176,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun CreatorPasswordDialog(
+private fun CreatorAccessDialog(
     password: String,
     hasError: Boolean,
     onPasswordChange: (String) -> Unit,
@@ -219,9 +185,10 @@ private fun CreatorPasswordDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("비밀번호") },
+        title = { Text("만든이") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap)) {
+                Text("CNU 서민규, 최혜성, 허민경", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = password,
                     onValueChange = onPasswordChange,
@@ -254,37 +221,81 @@ private fun CreatorPasswordDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("취소")
+                Text("닫기")
             }
         },
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CreatorInfoDialog(
-    onDismiss: () -> Unit,
+fun AdminSettingsScreen(
+    uiState: AILockUiState,
+    onBack: () -> Unit,
     onRestartOnboarding: () -> Unit,
+    onBackendBaseUrlSave: (String) -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("만든이") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap)) {
-                Text("ccomet0810", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("파일럿 버전에서는 온보딩 다시 보기를 임시로 남겨뒀어요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+    var backendUrlInput by remember(uiState.backendBaseUrl) { mutableStateOf(uiState.backendBaseUrl) }
+
+    Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing,
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("관리자 설정", fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기")
+                    }
+                },
+            )
         },
-        confirmButton = {
-            Button(onClick = onRestartOnboarding) {
-                Text("온보딩 다시 보기")
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = AILockSpacing.screenHorizontal)
+                .padding(top = AILockSpacing.sectionGap, bottom = AILockLayout.scrollContentBottomPadding),
+            verticalArrangement = Arrangement.spacedBy(AILockSpacing.listGap),
+        ) {
+            SettingsCard {
+                Text("온보딩", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                SecondaryButton(
+                    text = "온보딩 다시 보기",
+                    onClick = onRestartOnboarding,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("닫기")
+            SettingsCard {
+                Text("백엔드 주소", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("현재 테스트할 백엔드 주소", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(
+                    value = backendUrlInput,
+                    onValueChange = { backendUrlInput = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Backend URL") },
+                    singleLine = true,
+                    shape = AILockShape.control,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PandaOrange,
+                        unfocusedBorderColor = AppBorder,
+                        focusedContainerColor = AppSurface,
+                        unfocusedContainerColor = AppSurface,
+                    ),
+                )
+                Button(
+                    onClick = { onBackendBaseUrlSave(backendUrlInput) },
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text("저장")
+                }
             }
-        },
-    )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -330,25 +341,6 @@ fun ProfileEditScreen(
                     onValueChange = { onProfileChange(profile.copy(name = it)) },
                     modifier = Modifier.fillMaxWidth(),
                     label = "이름",
-                )
-                AilockOutlinedTextField(
-                    value = profile.age?.toString().orEmpty(),
-                    onValueChange = { onProfileChange(profile.copy(age = it.toIntOrNull())) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = "나이",
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
-                AilockOutlinedTextField(
-                    value = profile.gender,
-                    onValueChange = { onProfileChange(profile.copy(gender = it)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = "성별",
-                )
-                AilockOutlinedTextField(
-                    value = profile.job,
-                    onValueChange = { onProfileChange(profile.copy(job = it)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = "직업",
                 )
             }
             FloatingBottomActionButton(
@@ -429,5 +421,3 @@ private fun SettingsCard(
         content = content,
     )
 }
-
-

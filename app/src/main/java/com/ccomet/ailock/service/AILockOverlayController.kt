@@ -650,16 +650,44 @@ object AILockOverlayController {
             promptStack = null
             onKeyboardShowStarted = null
             onKeyboardDismissStarted = null
-            val panel = bottomPanel(
-                title = "앗",
-                hint = message,
-                primary = "다시 시도",
-                secondary = "이번엔 참아볼게",
-                onPrimary = { renderInput(animate = true) },
-                onSecondary = { dismissAndHome() },
-                inputEnabled = false,
+
+            val prompt = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                addView(speechCard("잠깐 문제가 생겼어", message))
+                addView(pandaView(), LinearLayout.LayoutParams(116.dp(), 116.dp()))
+            }
+            root.addView(
+                prompt,
+                FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+                    leftMargin = 28.dp()
+                    rightMargin = 28.dp()
+                    bottomMargin = 204.dp()
+                },
             )
-            root.addView(panel, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+            promptStack = prompt
+
+            val panel = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(18.dp(), 18.dp(), 18.dp(), 18.dp())
+                background = rounded(APP_SURFACE_MUTED, 8.dp(), APP_BORDER, 1.dp())
+                addView(
+                    actionButton("다시 시도") { renderInput(animate = true) },
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 52.dp()),
+                )
+                addView(
+                    actionButton("이번엔 멈출게", primary = false) { dismissAndHome() },
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 52.dp()).apply { topMargin = 10.dp() },
+                )
+            }
+            val stack = FrameLayout(context).apply {
+                setPadding(22.dp(), 0, 22.dp(), 22.dp())
+                addView(panel, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+            }
+            bottomStack = stack
+            root.addView(stack, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+            stack.translationY = PANEL_ENTER_OFFSET.dp().toFloat()
+            stack.animate().translationY(0f).setDuration(150).setInterpolator(DecelerateInterpolator()).start()
         }
 
         private fun bottomPanel(

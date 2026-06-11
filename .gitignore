@@ -14,3 +14,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+keystore.properties
+/keystore/
+/release-keystore-credentials.txt
