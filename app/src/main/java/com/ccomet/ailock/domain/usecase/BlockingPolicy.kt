@@ -35,16 +35,16 @@ object BlockingPolicy {
             )
         }
 
+        if (hasActiveTemporaryAllowance) return BlockDecision.Allow
+
         val lockUntilAt = config.lockUntilAt ?: 0L
         if (now < lockUntilAt) {
             return BlockDecision.ShowIntervention(
                 config = config,
                 reason = "manual lock timer active",
-                timeLimitExceeded = true,
+                timeLimitExceeded = false,
             )
         }
-
-        if (hasActiveTemporaryAllowance) return BlockDecision.Allow
 
         return BlockDecision.Allow
     }
