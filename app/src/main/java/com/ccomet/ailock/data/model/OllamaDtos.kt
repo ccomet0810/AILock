@@ -25,7 +25,7 @@ data class JudgePreResponse(
     val sessionId: String,
     val status: String,
     val allowedTime: Int,
-    val supportMessage: String,
+    val supportMessage: String?,
     val reason: String,
     val summary: String,
     val source: String,
@@ -38,7 +38,7 @@ data class JudgePreResponse(
 data class JudgePostResponse(
     val status: String,
     val allowedTime: Int,
-    val supportMessage: String,
+    val supportMessage: String?,
     val source: String,
     val stateScore: Float = 0f,
     val finalDecision: String = "REJECT",

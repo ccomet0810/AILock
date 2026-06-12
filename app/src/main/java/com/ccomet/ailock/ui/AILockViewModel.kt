@@ -71,6 +71,11 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
                 _uiState.update { it.copy(backendBaseUrl = url) }
             }
         }
+        viewModelScope.launch {
+            repository.debugModeEnabled.collect { enabled ->
+                _uiState.update { it.copy(debugModeEnabled = enabled) }
+            }
+        }
         reloadInstalledApps()
     }
 
@@ -263,6 +268,18 @@ class AILockViewModel(application: Application) : AndroidViewModel(application) 
                         onSuccess = { "서버 연결에 성공했어요." },
                         onFailure = { error -> "서버 연결 실패: ${error.message ?: error::class.java.simpleName}" },
                     ),
+                )
+            }
+        }
+    }
+
+    fun setDebugMode(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setDebugModeEnabled(enabled)
+            _uiState.update {
+                it.copy(
+                    debugModeEnabled = enabled,
+                    statusMessage = if (enabled) "디버깅 모드가 활성화됐어요." else "디버깅 모드가 비활성화됐어요.",
                 )
             }
         }

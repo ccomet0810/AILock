@@ -35,15 +35,6 @@ object BlockingPolicy {
             )
         }
 
-        val dailyLimit = config.dailyLimitMinutes
-        if (dailyLimit != null && todayUsageMinutes >= dailyLimit) {
-            return BlockDecision.ShowIntervention(
-                config = config,
-                reason = "daily hard limit exceeded",
-                timeLimitExceeded = true,
-            )
-        }
-
         if (hasActiveTemporaryAllowance) return BlockDecision.Allow
 
         val lockUntilAt = config.lockUntilAt ?: 0L

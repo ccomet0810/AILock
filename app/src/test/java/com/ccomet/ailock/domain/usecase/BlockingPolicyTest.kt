@@ -96,7 +96,7 @@ class BlockingPolicyTest {
     }
 
     @Test
-    fun `locked app over daily limit shows intervention`() {
+    fun `locked app over daily limit is still allowed`() {
         val config = lockedApp(selectedDays = setOf(DayOfWeek.MONDAY), dailyLimitMinutes = 30)
 
         val decision = BlockingPolicy.evaluate(
@@ -108,10 +108,7 @@ class BlockingPolicyTest {
             ignoredPackages = emptySet(),
         )
 
-        assertTrue(decision is BlockDecision.ShowIntervention)
-        val intervention = decision as BlockDecision.ShowIntervention
-        assertEquals(config, intervention.config)
-        assertEquals("daily hard limit exceeded", intervention.reason)
+        assertSame(BlockDecision.Allow, decision)
     }
 
     @Test

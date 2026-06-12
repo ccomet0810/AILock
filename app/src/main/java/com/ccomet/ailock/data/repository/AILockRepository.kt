@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.ccomet.ailock.data.debug.DebugTraceStore
 import com.ccomet.ailock.data.local.ailockDataStore
 import com.ccomet.ailock.data.model.LockedAppConfig
 import com.ccomet.ailock.data.model.UsageEventType
@@ -41,6 +42,9 @@ class AILockRepository(private val context: Context) {
     val backendBaseUrl: Flow<String> = context.ailockDataStore.data
         .map { preferences -> normalizeBackendBaseUrl(preferences[BACKEND_BASE_URL] ?: DEFAULT_BACKEND_BASE_URL) }
 
+    val debugModeEnabled: Flow<Boolean> = context.ailockDataStore.data
+        .map { preferences -> preferences[DEBUG_MODE_ENABLED] ?: false }
+
     suspend fun setOnboardingCompleted(completed: Boolean) {
         context.ailockDataStore.edit { it[ONBOARDING_COMPLETED] = completed }
     }
@@ -53,6 +57,10 @@ class AILockRepository(private val context: Context) {
         context.ailockDataStore.edit { preferences ->
             preferences[BACKEND_BASE_URL] = normalizeBackendBaseUrl(url)
         }
+    }
+
+    suspend fun setDebugModeEnabled(enabled: Boolean) {
+        DebugTraceStore.setEnabled(context, enabled)
     }
 
     suspend fun upsertLockedApp(config: LockedAppConfig) {
@@ -173,6 +181,7 @@ class AILockRepository(private val context: Context) {
         private val USAGE_RECORDS = stringPreferencesKey("usage_records")
         private val WILL_POWER_SCORE = intPreferencesKey("will_power_score")
         private val BACKEND_BASE_URL = stringPreferencesKey("backend_base_url")
+        private val DEBUG_MODE_ENABLED = booleanPreferencesKey("debug_mode_enabled")
         private val DEFAULT_BACKEND_BASE_URL = BuildConfig.AILOCK_BACKEND_BASE_URL
         private val LEGACY_BACKEND_BASE_URLS = setOf(
             "http://210.222.240.170:8080/",

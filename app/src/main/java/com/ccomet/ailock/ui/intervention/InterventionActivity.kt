@@ -21,6 +21,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -75,6 +77,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toDrawable
 import com.ccomet.ailock.AILockContainer
 import com.ccomet.ailock.R
+import com.ccomet.ailock.data.debug.DebugTraceEntry
+import com.ccomet.ailock.data.debug.DebugTraceStore
 import com.ccomet.ailock.data.model.ActiveUseSession
 import com.ccomet.ailock.data.model.JudgePostRequest
 import com.ccomet.ailock.data.model.JudgePreRequest
@@ -179,6 +183,8 @@ private fun InterventionRoute(
     val container = remember { AILockContainer.get(context) }
     val scope = rememberCoroutineScope()
     val lockedApps = container.ailockRepository.lockedApps.collectAsState(initial = emptyList()).value
+    val debugEnabled = DebugTraceStore.enabled.collectAsState().value
+    val debugEntries = DebugTraceStore.entries.collectAsState().value
     val config = lockedApps.firstOrNull { it.packageName == packageName }
 
     if (config == null) {
@@ -203,13 +209,14 @@ private fun InterventionRoute(
         pendingDecision = pending
         isAdditionalRequest = session != null && (timeLimitExceeded || System.currentTimeMillis() >= session.expectedEndAt)
         screenState = when {
-            timeLimitExceeded -> InterventionScreenState.HARD_BLOCK
+            timeLimitExceeded && session == null -> InterventionScreenState.HARD_BLOCK
             pending != null -> InterventionScreenState.RESULT
             else -> InterventionScreenState.INPUT
         }
     }
 
     LaunchedEffect(Unit) {
+        DebugTraceStore.syncEnabled(appContext)
         overlayVisible = true
     }
 
@@ -296,6 +303,7 @@ private fun InterventionRoute(
                                 }
                             }.onSuccess { decision ->
                                 forceFreshSession = false
+                                DebugTraceStore.appendJson("UI PendingFinalDecision", decision)
                                 recordAiResult(container, config, reasonInput, decision)
                                 pendingDecision = decision
                                 screenState = InterventionScreenState.RESULT
@@ -382,6 +390,64 @@ private fun InterventionRoute(
                     onRetry = { screenState = InterventionScreenState.INPUT },
                     onHome = onHome,
                     modifier = Modifier.fillMaxSize(),
+                )
+            }
+            if (debugEnabled) {
+                DebugTracePanel(
+                    entries = debugEntries,
+                    onCopy = { DebugTraceStore.copyAll(context) },
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DebugTracePanel(
+    entries: List<DebugTraceEntry>,
+    onCopy: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scrollState = rememberScrollState()
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xEE111111)),
+        shape = AILockShape.card,
+        border = BorderStroke(1.dp, Color(0x66FFFFFF)),
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "디버깅 모드",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                )
+                SecondaryButton(
+                    text = "복사",
+                    onClick = onCopy,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+                    .verticalScroll(scrollState),
+            ) {
+                Text(
+                    text = if (entries.isEmpty()) "아직 서버 요청이 없어요." else DebugTraceStore.allText(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White,
                 )
             }
         }
@@ -485,8 +551,8 @@ private fun ResultScreen(
     val allowedTime = decision?.allowedTime ?: 0
     val allowed = allowedTime > 0
     val message = decision?.supportMessage?.lineSequence()?.firstOrNull()?.ifBlank { null }
-        ?: if (allowed) "필요한 것만 확인하고 바로 돌아와." else "지금은 멈추는 쪽이 더 좋아 보여."
-    val speech = if (allowed) "좋아, ${allowedTime}분만" else message
+        .orEmpty()
+    val speech = message
 
     Box(modifier = modifier) {
         PandaPrompt(
@@ -498,11 +564,7 @@ private fun ResultScreen(
         )
         DecisionBottomCard(
             title = if (allowed) "${allowedTime}분 허용됐어요" else null,
-            body = if (allowed) {
-                "${appName}에서 필요한 일만 끝내고 돌아와요. $message"
-            } else {
-                null
-            },
+            body = if (allowed) message else null,
             primaryText = if (allowed) "앱으로 돌아가기" else "홈으로 가기",
             secondaryText = if (allowed) "이번엔 참아볼게" else "다시 말해볼게",
             onPrimary = if (allowed) onUseApp else onGiveUp,

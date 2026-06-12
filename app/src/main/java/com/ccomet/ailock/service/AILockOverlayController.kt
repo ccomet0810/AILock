@@ -21,6 +21,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsAnimation
 import android.view.WindowManager
@@ -31,9 +32,11 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.ccomet.ailock.AILockContainer
 import com.ccomet.ailock.R
+import com.ccomet.ailock.data.debug.DebugTraceStore
 import com.ccomet.ailock.data.model.ActiveUseSession
 import com.ccomet.ailock.data.model.JudgePostRequest
 import com.ccomet.ailock.data.model.JudgePreRequest
@@ -203,6 +206,9 @@ object AILockOverlayController {
         private var pending: PendingFinalDecision? = initialPending
         private var bottomStack: FrameLayout? = null
         private var promptStack: View? = null
+        private var debugPanel: LinearLayout? = null
+        private var debugText: TextView? = null
+        private var debugCollectJob: Job? = null
         private var lastInputReason: String = ""
         private var forceFreshSession: Boolean = false
         private var judgeJob: Job? = null
@@ -231,11 +237,12 @@ object AILockOverlayController {
                 }
                 start()
             }
-            if (timeLimitExceeded) {
+            if (timeLimitExceeded && session == null) {
                 renderHardBlock()
             } else {
                 renderInput(animate = true)
             }
+            installDebugTracePanel()
             installKeyboardFollower()
             return root
         }
@@ -280,6 +287,7 @@ object AILockOverlayController {
             root.addView(stack, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
             stack.translationY = PANEL_ENTER_OFFSET.dp().toFloat()
             stack.animate().translationY(0f).setDuration(150).setInterpolator(DecelerateInterpolator()).start()
+            attachDebugPanelIfNeeded()
         }
 
         private fun renderInput(animate: Boolean) {
@@ -493,7 +501,10 @@ object AILockOverlayController {
                 }
             }
 
-            if (!animate) return
+            if (!animate) {
+                attachDebugPanelIfNeeded()
+                return
+            }
 
             panelStack.translationY = PANEL_ENTER_OFFSET.dp().toFloat()
             panelStack.animate()
@@ -512,6 +523,7 @@ object AILockOverlayController {
             input.postDelayed({
                 input.requestFocus()
             }, 220L)
+            attachDebugPanelIfNeeded()
         }
         private suspend fun judgeUnlock(input: String): PendingFinalDecision {
             val dailyLimit = dailyLimitMinutes()
@@ -575,6 +587,7 @@ object AILockOverlayController {
             }
 
             recordAiResult(input, decision)
+            DebugTraceStore.appendJson("UI PendingFinalDecision", decision)
             forceFreshSession = false
             return decision.also {
                 pending = it
@@ -669,6 +682,7 @@ object AILockOverlayController {
             root.addView(stack, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
             stack.translationY = PANEL_ENTER_OFFSET.dp().toFloat()
             stack.animate().translationY(0f).setDuration(150).setInterpolator(DecelerateInterpolator()).start()
+            attachDebugPanelIfNeeded()
         }
         private fun renderResult(decision: PendingFinalDecision) {
             root.removeAllViews()
@@ -679,12 +693,12 @@ object AILockOverlayController {
             val allowedTime = decision.allowedTime
             val allowed = allowedTime > 0
             val message = decision.supportMessage?.lineSequence()?.firstOrNull()?.takeIf { it.isNotBlank() }
-                ?: if (allowed) "필요한 것만 확인하고 바로 돌아와." else "지금은 멈추는 쪽이 더 좋아 보여."
+                .orEmpty()
 
             val prompt = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                addView(speechCard(if (allowed) "좋아, ${allowedTime}분만" else message))
+                addView(speechCard(message))
                 addView(pandaView(), LinearLayout.LayoutParams(if (allowed) 124.dp() else 116.dp(), if (allowed) 124.dp() else 116.dp()))
             }
             root.addView(
@@ -709,7 +723,7 @@ object AILockOverlayController {
                         setTextColor(APP_TEXT_STRONG)
                     })
                     addView(TextView(context).apply {
-                        text = "${config.appName}에서 필요한 일만 끝내고 돌아와요. $message"
+                        text = message
                         textSize = 14f
                         setTextColor(APP_TEXT_SUBTLE)
                         setPadding(0, 8.dp(), 0, 0)
@@ -742,6 +756,7 @@ object AILockOverlayController {
             root.addView(stack, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
             stack.translationY = PANEL_ENTER_OFFSET.dp().toFloat()
             stack.animate().translationY(0f).setDuration(150).setInterpolator(DecelerateInterpolator()).start()
+            attachDebugPanelIfNeeded()
         }
         private fun renderError(message: String) {
             root.removeAllViews()
@@ -787,6 +802,85 @@ object AILockOverlayController {
             root.addView(stack, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
             stack.translationY = PANEL_ENTER_OFFSET.dp().toFloat()
             stack.animate().translationY(0f).setDuration(150).setInterpolator(DecelerateInterpolator()).start()
+            attachDebugPanelIfNeeded()
+        }
+
+        private fun installDebugTracePanel() {
+            debugCollectJob?.cancel()
+            debugCollectJob = scope.launch {
+                if (!DebugTraceStore.syncEnabled(context)) return@launch
+                attachDebugPanelIfNeeded()
+                DebugTraceStore.entries.collect {
+                    updateDebugPanelText()
+                    attachDebugPanelIfNeeded()
+                }
+            }
+        }
+
+        private fun attachDebugPanelIfNeeded() {
+            if (!DebugTraceStore.enabled.value) return
+            val panel = debugPanel ?: createDebugPanel().also { debugPanel = it }
+            updateDebugPanelText()
+            if (panel.parent == null) {
+                root.addView(
+                    panel,
+                    FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP).apply {
+                        leftMargin = 12.dp()
+                        rightMargin = 12.dp()
+                        topMargin = 12.dp()
+                    },
+                )
+            }
+            panel.bringToFront()
+        }
+
+        private fun createDebugPanel(): LinearLayout =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(10.dp(), 10.dp(), 10.dp(), 10.dp())
+                background = rounded(Color.argb(238, 17, 17, 17), 8.dp(), Color.argb(102, 255, 255, 255), 1.dp())
+                addView(
+                    LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        addView(TextView(context).apply {
+                            text = "디버깅 모드"
+                            textSize = 13f
+                            typeface = Typeface.DEFAULT_BOLD
+                            setTextColor(Color.WHITE)
+                        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                        addView(TextView(context).apply {
+                            text = "복사"
+                            textSize = 13f
+                            typeface = Typeface.DEFAULT_BOLD
+                            gravity = Gravity.CENTER
+                            setTextColor(APP_TEXT_STRONG)
+                            background = rounded(APP_SURFACE_MUTED, 8.dp(), APP_BORDER, 1.dp())
+                            isClickable = true
+                            isFocusable = true
+                            setOnClickListener { DebugTraceStore.copyAll(context) }
+                        }, LinearLayout.LayoutParams(72.dp(), 40.dp()))
+                    },
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+                )
+                debugText = TextView(context).apply {
+                    textSize = 11f
+                    setTextColor(Color.WHITE)
+                    setPadding(0, 6.dp(), 0, 0)
+                }
+                addView(
+                    ScrollView(context).apply {
+                        addView(
+                            debugText,
+                            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+                        )
+                    },
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 180.dp()),
+                )
+            }
+
+        private fun updateDebugPanelText() {
+            debugText?.text = DebugTraceStore.allText().ifBlank { "아직 서버 요청이 없어요." }
         }
 
         private fun bottomPanel(

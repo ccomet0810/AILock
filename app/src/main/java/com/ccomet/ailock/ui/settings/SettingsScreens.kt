@@ -195,6 +195,7 @@ private fun CreatorAccessDialog(
         ) {
             Text("만든이", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppTextStrong)
             Text("CNU 서민규, 최혜성, 허민경", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = AppTextSubtle)
+            Text("비밀번호를 입력하면 관리자 설정으로 이동해요.", style = MaterialTheme.typography.bodySmall, color = AppTextSubtle)
             Column(verticalArrangement = Arrangement.spacedBy(AILockSpacing.compactGap)) {
                 OutlinedTextField(
                     value = password,
@@ -242,6 +243,7 @@ fun AdminSettingsScreen(
     uiState: AILockUiState,
     onBack: () -> Unit,
     onRestartOnboarding: () -> Unit,
+    onDebugModeChange: (Boolean) -> Unit,
     onBackendBaseUrlSave: (String) -> Unit,
     onBackendConnectionTest: (String) -> Unit,
 ) {
@@ -279,6 +281,26 @@ fun AdminSettingsScreen(
                     onClick = onRestartOnboarding,
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+            SettingsCard {
+                Text("디버깅 모드", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    if (uiState.debugModeEnabled) "활성화됨" else "비활성화됨",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (uiState.debugModeEnabled) {
+                    SecondaryButton(
+                        text = "디버깅 모드 끄기",
+                        onClick = { onDebugModeChange(false) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    PrimaryButton(
+                        text = "디버깅 모드 켜기",
+                        onClick = { onDebugModeChange(true) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
             SettingsCard {
                 Text("백엔드 주소", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)

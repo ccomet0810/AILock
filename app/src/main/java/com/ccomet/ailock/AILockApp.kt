@@ -221,6 +221,7 @@ fun AILockApp(
                             popUpTo(Routes.HOME) { inclusive = true }
                         }
                     },
+                    onDebugModeChange = viewModel::setDebugMode,
                     onBackendBaseUrlSave = viewModel::saveBackendBaseUrl,
                     onBackendConnectionTest = viewModel::testBackendConnection,
                 )

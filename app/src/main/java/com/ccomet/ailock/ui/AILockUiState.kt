@@ -26,6 +26,7 @@ data class AILockUiState(
     val draft: LockedAppDraft = LockedAppDraft(),
     val willPowerScore: Int = 80,
     val backendBaseUrl: String = "",
+    val debugModeEnabled: Boolean = false,
     val statusMessage: String? = null,
 )
 
