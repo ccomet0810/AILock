@@ -722,13 +722,6 @@ object AILockOverlayController {
                         typeface = Typeface.DEFAULT_BOLD
                         setTextColor(APP_TEXT_STRONG)
                     })
-                    addView(TextView(context).apply {
-                        text = message
-                        textSize = 14f
-                        setTextColor(APP_TEXT_SUBTLE)
-                        setPadding(0, 8.dp(), 0, 0)
-                        maxLines = 4
-                    })
                 }
                 addView(
                     actionButton(if (allowed) "앱으로 돌아가기" else "홈으로 가기") {

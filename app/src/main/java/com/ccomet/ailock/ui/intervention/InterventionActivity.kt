@@ -564,7 +564,7 @@ private fun ResultScreen(
         )
         DecisionBottomCard(
             title = if (allowed) "${allowedTime}분 허용됐어요" else null,
-            body = if (allowed) message else null,
+            body = null,
             primaryText = if (allowed) "앱으로 돌아가기" else "홈으로 가기",
             secondaryText = if (allowed) "이번엔 참아볼게" else "다시 말해볼게",
             onPrimary = if (allowed) onUseApp else onGiveUp,
