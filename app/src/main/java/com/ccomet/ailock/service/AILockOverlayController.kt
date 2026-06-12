@@ -257,7 +257,7 @@ object AILockOverlayController {
             val prompt = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                addView(speechCard("지금은 사용할 수 없어", "${config.appName}의 제한 시간이 적용 중이야."))
+                addView(speechCard("오늘은 그만", "${config.appName} 목표 시간을 모두 사용했어."))
                 addView(pandaView(), LinearLayout.LayoutParams(116.dp(), 116.dp()))
             }
             root.addView(

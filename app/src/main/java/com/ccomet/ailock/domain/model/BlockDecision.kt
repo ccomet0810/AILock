@@ -10,5 +10,10 @@ sealed interface BlockDecision {
         val reason: String,
         val timeLimitExceeded: Boolean = false,
     ) : BlockDecision
+
+    data class ForceDeny(
+        val config: LockedAppConfig,
+        val reason: String,
+    ) : BlockDecision
 }
 

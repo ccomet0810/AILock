@@ -27,6 +27,14 @@ object BlockingPolicy {
             return BlockDecision.Allow
         }
 
+        val dailyLimitMinutes = config.advancedDayLimits[today] ?: config.dailyLimitMinutes
+        if (dailyLimitMinutes != null && todayUsageMinutes >= dailyLimitMinutes) {
+            return BlockDecision.ForceDeny(
+                config = config,
+                reason = "daily limit exceeded",
+            )
+        }
+
         if (hasExpiredActiveSession) {
             return BlockDecision.ShowIntervention(
                 config = config,

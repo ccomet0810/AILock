@@ -47,6 +47,13 @@ class AILockAccessibilityService : AccessibilityService() {
             }
             when (val decision = container.blockingEngine.evaluate(packageName)) {
                 BlockDecision.Allow -> Unit
+                is BlockDecision.ForceDeny -> {
+                    AILockOverlayController.show(
+                        context = applicationContext,
+                        config = decision.config,
+                        timeLimitExceeded = true,
+                    )
+                }
                 is BlockDecision.ShowIntervention -> showOverlayWithCooldown(decision)
             }
         }

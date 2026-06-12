@@ -96,7 +96,7 @@ class BlockingPolicyTest {
     }
 
     @Test
-    fun `locked app over daily limit is still allowed`() {
+    fun `locked app over daily limit is denied`() {
         val config = lockedApp(selectedDays = setOf(DayOfWeek.MONDAY), dailyLimitMinutes = 30)
 
         val decision = BlockingPolicy.evaluate(
@@ -108,7 +108,10 @@ class BlockingPolicyTest {
             ignoredPackages = emptySet(),
         )
 
-        assertSame(BlockDecision.Allow, decision)
+        assertTrue(decision is BlockDecision.ForceDeny)
+        val denial = decision as BlockDecision.ForceDeny
+        assertEquals(config, denial.config)
+        assertEquals("daily limit exceeded", denial.reason)
     }
 
     @Test
